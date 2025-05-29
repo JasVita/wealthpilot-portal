@@ -1,18 +1,8 @@
 "use client";
+import { type LucideIcon } from "lucide-react";
+import Link from "next/link";
 
-import { ChevronRight, type LucideIcon } from "lucide-react";
-
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-} from "@/components/ui/sidebar";
+import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 export function NavMain({
   items,
@@ -33,10 +23,12 @@ export function NavMain({
       <SidebarMenu className="gap-2">
         {items.map((item) => (
           <SidebarMenuItem key={item.url}>
-            <SidebarMenuButton tooltip={item.title}>
-              {item.icon && <item.icon />}
-              <span>{item.title}</span>
-            </SidebarMenuButton>
+            <Link href={item.url} className="w-full">
+              <SidebarMenuButton tooltip={item.title} className="w-full justify-start">
+                {item.icon && <item.icon />}
+                <span>{item.title}</span>
+              </SidebarMenuButton>
+            </Link>
           </SidebarMenuItem>
         ))}
       </SidebarMenu>

@@ -4,7 +4,6 @@ import * as React from "react";
 import { Bot, Contact, GaugeCircle, Settings, HandCoins } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
-import { NavProjects } from "@/components/nav-projects";
 import { NavUser } from "@/components/nav-user";
 import { TeamSwitcher } from "@/components/team-switcher";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
@@ -23,7 +22,7 @@ const data = {
   navMain: [
     {
       title: "Clients",
-      url: "/",
+      url: "/clients",
       icon: Contact,
     },
     {
