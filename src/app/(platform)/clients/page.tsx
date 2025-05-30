@@ -12,8 +12,8 @@ export default function Page() {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2 lg:grid-cols-3">
-      <Card className="flex flex-col justify-center ">
+    <div className="grid grid-cols-1 gap-2 p-4 md:grid-cols-2 lg:grid-cols-3">
+      <Card className="flex flex-col justify-center">
         <CardHeader>
           <CardTitle>Mock Client Inc.</CardTitle>
           <CardDescription>Leading provider of mock services worldwide.</CardDescription>
