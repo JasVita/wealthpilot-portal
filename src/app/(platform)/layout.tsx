@@ -44,6 +44,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       };
       const completed = await pollResult();
 
+      console.log("Upload completed:", completed);
+
       const piePayload = JSON.parse(completed.result.Pie_chart);
       const formattedPie = piePayload.charts.map(({ labels, data, colors }: any) => ({
         labels,
@@ -65,7 +67,6 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         loans: bank.loans ?? [],
       }));
       setTableDataArray(uiTables);
-
       setDownloadURL(completed.result.Excel_Report_URL);
       setTask2ID(completed.task2_id);
       setStatus("success");

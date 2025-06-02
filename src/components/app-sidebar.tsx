@@ -29,6 +29,20 @@ const data = {
       title: "Dashboard",
       url: "/dashboard",
       icon: GaugeCircle,
+      items: [
+        {
+          title: "Financial Overview",
+          url: "/dashboard/financial-overview",
+        },
+        {
+          title: "Insights and Trends",
+          url: "/dashboard/insights-and-trends",
+        },
+        {
+          title: "Summary",
+          url: "/dashboard/summary",
+        },
+      ],
     },
     {
       title: "AI Assistant",
