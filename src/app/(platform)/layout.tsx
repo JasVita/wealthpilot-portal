@@ -27,11 +27,12 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
 
-    const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID } = useWealthStore.getState();
+    const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage } = useWealthStore.getState();
 
     if (!files.length) return alert("Please upload files first.");
 
     try {
+      clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
 
       const {

@@ -83,7 +83,7 @@ export const useWealthStore = create<WealthState>()(
         });
 
         try {
-          const response = await axios.post(`${process.env.NEXT_PUBLIC_WPAPI_URL}/msg`, { user_input: input });
+          const response = await axios.post(`https://api.wealthpilot.turoid.ai/bankdemo/msg`, { user_input: input });
           const aiResponse: Message = {
             content: response.data.result.response || "server error",
             isUser: false,

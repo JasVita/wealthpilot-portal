@@ -103,8 +103,12 @@ export default function Page() {
 
   useEffect(() => {
     const fetchInsights = async () => {
+      if (!task2ID) return; // Wait until it's defined
+
       try {
+        console.log("task2ID:", task2ID);
         const result = await axios.get(`https://api.wealthpilot.turoid.ai/bankdemo/result_news/${task2ID}`);
+        console.log(JSON.stringify(result, null, 2));
         const alertData = JSON.parse(result.data.result.Alerts);
         const newsData = JSON.parse(result.data.result.News);
 
@@ -140,7 +144,7 @@ export default function Page() {
     };
 
     fetchInsights();
-  }, []);
+  }, [task2ID]);
 
   return (
     <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
@@ -206,16 +210,16 @@ export default function Page() {
             alerts.map((alert, index) => {
               const meta = categoryMeta[alert.category];
               return (
-                <AlertComponent key={index} className={meta.color}>
-                  <div className="flex items-start">
-                    <div className="mr-2 mt-0.5">{meta.icon}</div>
-                    <div>
+                <div key={index} className={meta.color + " p-2 rounded-lg border"}>
+                  <div className="flex flex-row items-start w-full">
+                    <div className="mr-2 mt-1.5 shrink-0">{meta.icon}</div>
+                    <div className="flex-1">
                       <h4 className="font-medium">{alert.title}</h4>
                       <p className="text-sm">{alert.description}</p>
                       <p className="text-xs text-muted-foreground mt-1">💡 {alert.recommendation}</p>
                     </div>
                   </div>
-                </AlertComponent>
+                </div>
               );
             })
           ) : (

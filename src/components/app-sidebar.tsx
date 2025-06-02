@@ -10,9 +10,9 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } fr
 
 const data = {
   user: {
-    name: "annum",
-    email: "annum@gmail.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: "admin",
+    email: "admin@gmail.com",
+    avatar: "",
   },
   team: {
     name: "Wealth Pilot",
@@ -31,15 +31,19 @@ const data = {
       icon: GaugeCircle,
       items: [
         {
-          title: "Financial Overview",
-          url: "/dashboard/financial-overview",
+          title: "Overview (Coming soon...)",
+          url: "/dashboard/overview",
+        },
+        {
+          title: "Client Overview",
+          url: "/dashboard/client-overview",
         },
         {
           title: "Insights and Trends",
           url: "/dashboard/insights-trends",
         },
         {
-          title: "Summary",
+          title: "Summary (Coming soon...)",
           url: "/dashboard/summary",
         },
       ],
