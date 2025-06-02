@@ -36,7 +36,7 @@ const data = {
         },
         {
           title: "Insights and Trends",
-          url: "/dashboard/insights-and-trends",
+          url: "/dashboard/insights-trends",
         },
         {
           title: "Summary",
