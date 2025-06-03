@@ -37,10 +37,10 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
       const {
         data: { task1_id },
-      } = await axios.post("https://api.wealthpilot.turoid.ai/bankdemo", { fileUrls });
+      } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}`, { fileUrls });
 
       const pollResult = async (): Promise<any> => {
-        const { data } = await axios.get(`https://api.wealthpilot.turoid.ai/bankdemo/result/${task1_id}`);
+        const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/result/${task1_id}`);
         return data.status === "ok" ? data : new Promise((res) => setTimeout(() => res(pollResult()), 10000));
       };
       const completed = await pollResult();

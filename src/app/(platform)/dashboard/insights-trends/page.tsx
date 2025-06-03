@@ -107,7 +107,7 @@ export default function Page() {
 
       try {
         console.log("task2ID:", task2ID);
-        const result = await axios.get(`https://api.wealthpilot.turoid.ai/bankdemo/result_news/${task2ID}`);
+        const result = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/result_news/${task2ID}`);
         console.log(JSON.stringify(result, null, 2));
         const alertData = JSON.parse(result.data.result.Alerts);
         const newsData = JSON.parse(result.data.result.News);
