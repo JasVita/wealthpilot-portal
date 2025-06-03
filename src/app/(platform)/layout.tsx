@@ -128,7 +128,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             <DialogContent className="flex flex-col items-center p-6">
               <DialogTitle className="text-lg font-semibold">Upload Financial Documents</DialogTitle>
               <DialogDescription className="mb-4 text-sm text-muted-foreground text-center">
-                Upload your bank or investment reports. We'll automatically analyze them.
+                Upload your bank or investment reports. We&apos;ll automatically analyze them.
               </DialogDescription>
               <FileUpload
                 files={files}
