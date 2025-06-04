@@ -11,7 +11,9 @@ interface WealthState {
   downloadURL: string;
   task2ID: string;
   msgLoad: boolean;
+  currClient: string;
 
+  setCurrClient: (client: string) => void;
   setPieDataSets: (data: PieData[]) => void;
   setTableDataArray: (data: StockTable[]) => void;
   setChatInput: (input: string) => void;
@@ -32,7 +34,9 @@ export const useWealthStore = create<WealthState>()(
       downloadURL: "",
       task2ID: "",
       msgLoad: false,
+      currClient: "Overall",
 
+      setCurrClient: (client) => set({ currClient: client }),
       setPieDataSets: (data) => set({ pieDataSets: data }),
       setTableDataArray: (data) => set({ tableDataArray: data }),
       setChatInput: (input) => set({ chatInput: input }),

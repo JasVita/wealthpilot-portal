@@ -1,7 +1,8 @@
 "use client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart } from "@/components/ui/chart";
-
+import { useWealthStore } from "@/stores/wealth-store";
+import { useEffect } from "react";
 const barChartData = [
   { label: "Q1", Revenue: 120000, Profit: 30000 },
   { label: "Q2", Revenue: 150000, Profit: 45000 },
@@ -16,6 +17,12 @@ const mockTableData = [
 ];
 
 export default function Page() {
+  const { setCurrClient } = useWealthStore();
+
+  useEffect(() => {
+    setCurrClient("Overall");
+  }, []);
+
   return (
     <div className="flex flex-col gap-6 p-4">
       <Card className="card-hover">

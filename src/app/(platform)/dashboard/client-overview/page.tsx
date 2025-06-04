@@ -4,11 +4,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
+import { useEffect } from "react";
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title, ChartDataLabels);
 
 export default function Page() {
-  const { pieDataSets, tableDataArray } = useWealthStore();
+  const { pieDataSets, tableDataArray, setCurrClient } = useWealthStore();
+
+  useEffect(() => {
+    setCurrClient("Mock Client");
+  }, []);
+
   const hasData = pieDataSets.length > 0 && tableDataArray.length > 0;
 
   const formatCurrency = (value: number): string =>

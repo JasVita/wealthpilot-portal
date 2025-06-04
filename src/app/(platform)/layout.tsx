@@ -23,11 +23,10 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
+  const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, currClient } = useWealthStore();
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
-
-    const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage } = useWealthStore.getState();
 
     if (!files.length) return alert("Please upload files first.");
 
@@ -97,11 +96,12 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">Building Your Application</BreadcrumbLink>
+                  <BreadcrumbLink href="/clients">Client: </BreadcrumbLink>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
+                {/* <BreadcrumbSeparator className="hidden md:block" /> */}
                 <BreadcrumbItem>
-                  <BreadcrumbPage>Data Fetching</BreadcrumbPage>
+                  {/* <BreadcrumbPage>{currClient}</BreadcrumbPage> */}
+                  {currClient}
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
