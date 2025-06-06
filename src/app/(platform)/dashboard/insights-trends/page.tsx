@@ -18,23 +18,7 @@ import {
 import { Alert as AlertComponent } from "@/components/ui/alert";
 import axios from "axios";
 import { useWealthStore } from "@/stores/wealth-store";
-
-interface AlertItem {
-  title: string;
-  description: string;
-  recommendation: string;
-  category: AlertCategory;
-}
-
-interface NewsItem {
-  stock: string;
-  title: string;
-  summary: string;
-  publication_time: string;
-  source: string;
-  trading_insight: string;
-  impact: "positive" | "negative" | "neutral";
-}
+import type { AlertItem, NewsItem } from "@/types";
 
 type AlertCategory =
   | "1. Large/irregular fund movements"
@@ -79,8 +63,7 @@ const categoryMeta: Record<AlertCategory, { icon: JSX.Element; color: string }> 
 export default function Page() {
   const data = getMockClientData();
   const { task2ID } = useWealthStore();
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [news, setNews] = useState<NewsItem[]>([]);
+  const { alerts, news, setAlerts, setNews } = useWealthStore();
 
   const formatCurrency = (value: number): string =>
     new Intl.NumberFormat("en-US", {

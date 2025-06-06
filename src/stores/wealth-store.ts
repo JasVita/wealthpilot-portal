@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import axios from "axios";
-import { FullServerResponseSchema, type PieData, type StockTable, type Message } from "@/types";
+import { FullServerResponseSchema, type PieData, type StockTable, type Message, AlertItem, NewsItem } from "@/types";
 
 interface WealthState {
   pieDataSets: PieData[];
@@ -12,6 +12,11 @@ interface WealthState {
   task2ID: string;
   msgLoad: boolean;
   currClient: string;
+
+  alerts: AlertItem[];
+  news: NewsItem[];
+  setAlerts: (data: AlertItem[]) => void;
+  setNews: (data: NewsItem[]) => void;
 
   setCurrClient: (client: string) => void;
   setPieDataSets: (data: PieData[]) => void;
@@ -35,7 +40,11 @@ export const useWealthStore = create<WealthState>()(
       task2ID: "",
       msgLoad: false,
       currClient: "Overall",
+      alerts: [],
+      news: [],
 
+      setAlerts: (data) => set({ alerts: data }),
+      setNews: (data) => set({ news: data }),
       setCurrClient: (client) => set({ currClient: client }),
       setPieDataSets: (data) => set({ pieDataSets: data }),
       setTableDataArray: (data) => set({ tableDataArray: data }),
@@ -116,6 +125,8 @@ export const useWealthStore = create<WealthState>()(
           downloadURL: "",
           task2ID: "",
           msgLoad: false,
+          alerts: [],
+          news: [],
         }),
     }),
     { name: "wealth-storage", version: 1 }

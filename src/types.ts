@@ -83,3 +83,27 @@ export type Message = {
   timestamp?: string;
   isLoading?: boolean;
 };
+
+export interface AlertItem {
+  title: string;
+  description: string;
+  recommendation: string;
+  category:
+    | "1. Large/irregular fund movements"
+    | "2. Concentration or high-risk portfolio issues"
+    | "3. Maturity reminders (bonds, deposits, policies)"
+    | "4. Low liquidity or excessive idle cash"
+    | "5. AUM or performance fluctuations"
+    | "6. Compliance issues (KYC/AML/documents)"
+    | "7. Market event match for held positions";
+}
+
+export interface NewsItem {
+  stock: string;
+  title: string;
+  summary: string;
+  publication_time: string;
+  source: string;
+  trading_insight: string;
+  impact: "positive" | "negative" | "neutral";
+}
