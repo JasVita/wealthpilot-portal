@@ -105,5 +105,5 @@ export interface NewsItem {
   publication_time: string;
   source: string;
   trading_insight: string;
-  impact: "positive" | "negative" | "neutral";
+  impact: string;
 }

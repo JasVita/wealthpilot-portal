@@ -73,16 +73,16 @@ export default function Page() {
       maximumFractionDigits: 0,
     }).format(value);
 
-  const getNewsIcon = (impact: string) => {
-    switch (impact) {
-      case "positive":
-        return <TrendingUp className="w-4 h-4 text-green-600" />;
-      case "negative":
-        return <TrendingDown className="w-4 h-4 text-red-600" />;
-      default:
-        return <Minus className="w-4 h-4 text-gray-400" />;
-    }
-  };
+  // const getNewsIcon = (impact: string) => {
+  //   switch (impact) {
+  //     case "positive":
+  //       return <TrendingUp className="w-4 h-4 text-green-600" />;
+  //     case "negative":
+  //       return <TrendingDown className="w-4 h-4 text-red-600" />;
+  //     default:
+  //       return <Minus className="w-4 h-4 text-gray-400" />;
+  //   }
+  // };
 
   useEffect(() => {
     const fetchInsights = async () => {
@@ -93,7 +93,15 @@ export default function Page() {
         const result = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/result_news/${task2ID}`);
         console.log(JSON.stringify(result, null, 2));
         const alertData = JSON.parse(result.data.result.Alerts);
-        const newsData = JSON.parse(result.data.result.News);
+        let newsData;
+
+        try {
+          // Try to parse as JSON (object or array)
+          newsData = JSON.parse(result.data.result.News);
+        } catch (e) {
+          // If it fails (e.g., News is a plain string), just use the string
+          newsData = result.data.result.News;
+        }
 
         const parsedAlerts: AlertItem[] = alertData.alerts.map((item: any) => ({
           title: item.type,
@@ -102,22 +110,32 @@ export default function Page() {
           category: item.category,
         }));
 
-        const parsedNews: NewsItem[] = newsData.flatMap((stockItem: any) =>
-          stockItem.news.map((item: any) => ({
-            stock: stockItem.stock,
-            title: item.title,
-            summary: item.summary,
-            publication_time: item.publication_time,
-            source: item.source,
-            trading_insight: item.trading_insight,
-            impact:
-              item.trading_insight.includes("bullish") || item.trading_insight.includes("strong")
-                ? "positive"
-                : item.trading_insight.includes("volatility") || item.trading_insight.includes("down")
-                ? "negative"
-                : "neutral",
-          }))
-        );
+        // const parsedNews: NewsItem[] = newsData.flatMap((stockItem: any) =>
+        //   stockItem.news.map((item: any) => ({
+        //     stock: stockItem.stock,
+        //     title: item.title,
+        //     summary: item.summary,
+        //     publication_time: item.publication_time,
+        //     source: item.source,
+        //     trading_insight: item.trading_insight,
+        //     impact:
+        //       item.trading_insight.includes("bullish") || item.trading_insight.includes("strong")
+        //         ? "positive"
+        //         : item.trading_insight.includes("volatility") || item.trading_insight.includes("down")
+        //         ? "negative"
+        //         : "neutral",
+        //   }))
+        // );
+
+        const parsedNews: NewsItem[] = newsData.map((item: any) => ({
+          stock: item.ticker,
+          summary: item.summary,
+          publication_time: item.published_at,
+          source: item.source,
+          trading_insight: item.trading_insight,
+          impact: item.forecasted_impact_pct,
+          title: "item.title",
+        }));
 
         setAlerts(parsedAlerts);
         setNews(parsedNews);
@@ -162,19 +180,36 @@ export default function Page() {
             {news.length > 0 ? (
               news.map((item, idx) => (
                 <div key={idx} className="flex items-start space-x-4 p-4 rounded-md bg-gray-50 hover:bg-gray-100">
-                  <div className="mt-1">{getNewsIcon(item.impact)}</div>
+                  {/* <div className="mt-1">{"impact: " + item.impact}</div> */}
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <h4 className="font-medium">
-                        <span className="text-sm text-gray-400 mr-2">[{item.stock}]</span>
-                        {item.title}
+                        {/* <span className="text-sm text-gray-400 mr-2">[{item.stock}]</span> */}
+                        {item.stock}
                       </h4>
                       <span className="text-sm text-gray-500">
                         {new Date(item.publication_time).toLocaleDateString()}
                       </span>
                     </div>
                     <p className="text-sm text-gray-600 mt-1">{item.summary}</p>
+                    <p className="text-sm mt-1">{item.trading_insight}</p>
                     <p className="text-sm text-gray-500 mt-1">{item.source}</p>
+                    <p
+                      className={`text-sm mt-1 px-2 py-1 rounded ${
+                        Number(item.impact) > 0
+                          ? "bg-green-100 text-green-800"
+                          : Number(item.impact) < 0
+                          ? "bg-red-100 text-red-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {"Turoid AI forecast: " +
+                        (Number(item.impact) > 0
+                          ? "+" + item.impact
+                          : Number(item.impact) < 0
+                          ? item.impact
+                          : item.impact || "0")}
+                    </p>
                   </div>
                 </div>
               ))
