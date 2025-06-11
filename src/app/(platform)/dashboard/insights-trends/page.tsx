@@ -208,7 +208,8 @@ export default function Page() {
                           ? "+" + item.impact
                           : Number(item.impact) < 0
                           ? item.impact
-                          : item.impact || "0")}
+                          : item.impact || "0") +
+                        "%"}
                     </p>
                   </div>
                 </div>
