@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Contact, GaugeCircle, Settings, HandCoins } from "lucide-react";
+import { Bot, Contact, GaugeCircle, Settings, HandCoins, BarChart3, ArrowRightLeft, RefreshCw } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
@@ -47,6 +47,21 @@ const data = {
           url: "/dashboard/summary",
         },
       ],
+    },
+    {
+      title: "Trade retrocession",
+      url: "/trade-retrocession",
+      icon: BarChart3,
+    },
+    {
+      title: "SP LifeCycle",
+      url: "/sp-lifecycle",
+      icon: RefreshCw,
+    },
+    {
+      title: "Order Management",
+      url: "/order-management",
+      icon: ArrowRightLeft,
     },
     {
       title: "AI Assistant",

@@ -1,0 +1,133 @@
+export interface TradeRetrocessionData {
+  id: string;
+  rm: string;
+  client: string;
+  account: string;
+  netAssetsValue: number;
+  commission: number;
+  revenue: number;
+  retrocession: number;
+}
+
+export const mockTradeRetrocessionData: TradeRetrocessionData[] = [
+  {
+    id: "1",
+    rm: "John Smith",
+    client: "Apple Corp",
+    account: "AC-001-2024",
+    netAssetsValue: 2500000,
+    commission: 12500,
+    revenue: 45000,
+    retrocession: 0.15,
+  },
+  {
+    id: "2",
+    rm: "Sarah Johnson",
+    client: "Microsoft Holdings",
+    account: "AC-002-2024",
+    netAssetsValue: 3200000,
+    commission: 16000,
+    revenue: 58000,
+    retrocession: 0.18,
+  },
+  {
+    id: "3",
+    rm: "Michael Chen",
+    client: "Google Ventures",
+    account: "AC-003-2024",
+    netAssetsValue: 1800000,
+    commission: 9000,
+    revenue: 32000,
+    retrocession: 0.12,
+  },
+  {
+    id: "4",
+    rm: "Emily Davis",
+    client: "Amazon Investments",
+    account: "AC-004-2024",
+    netAssetsValue: 4100000,
+    commission: 20500,
+    revenue: 75000,
+    retrocession: 0.22,
+  },
+  {
+    id: "5",
+    rm: "Robert Wilson",
+    client: "Tesla Motors",
+    account: "AC-005-2024",
+    netAssetsValue: 2900000,
+    commission: 14500,
+    revenue: 52000,
+    retrocession: 0.16,
+  },
+  {
+    id: "6",
+    rm: "Lisa Zhang",
+    client: "Meta Platforms",
+    account: "AC-006-2024",
+    netAssetsValue: 3600000,
+    commission: 18000,
+    revenue: 65000,
+    retrocession: 0.19,
+  },
+  {
+    id: "7",
+    rm: "David Brown",
+    client: "Netflix Inc",
+    account: "AC-007-2024",
+    netAssetsValue: 1500000,
+    commission: 7500,
+    revenue: 27000,
+    retrocession: 0.1,
+  },
+  {
+    id: "8",
+    rm: "Jennifer Lee",
+    client: "Spotify Holdings",
+    account: "AC-008-2024",
+    netAssetsValue: 2200000,
+    commission: 11000,
+    revenue: 39000,
+    retrocession: 0.14,
+  },
+  {
+    id: "9",
+    rm: "Mark Thompson",
+    client: "Adobe Systems",
+    account: "AC-009-2024",
+    netAssetsValue: 2800000,
+    commission: 14000,
+    revenue: 50000,
+    retrocession: 0.17,
+  },
+  {
+    id: "10",
+    rm: "Anna Martinez",
+    client: "Salesforce Inc",
+    account: "AC-010-2024",
+    netAssetsValue: 3300000,
+    commission: 16500,
+    revenue: 59000,
+    retrocession: 0.18,
+  },
+  {
+    id: "11",
+    rm: "Tom Anderson",
+    client: "Oracle Corporation",
+    account: "AC-011-2024",
+    netAssetsValue: 2700000,
+    commission: 13500,
+    revenue: 48000,
+    retrocession: 0.16,
+  },
+  {
+    id: "12",
+    rm: "Rachel Green",
+    client: "IBM Holdings",
+    account: "AC-012-2024",
+    netAssetsValue: 1900000,
+    commission: 9500,
+    revenue: 34000,
+    retrocession: 0.13,
+  },
+];
