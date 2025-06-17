@@ -22,7 +22,7 @@ const supportedBanks = [
     url: "https://www.jsafrasarasin.com/",
   },
   { name: "LGT", logo: "/banks/lgt.jpeg", url: "https://www.lgt.com/" },
-  { name: "Nomura", logo: "/banks/Nomura.jpeg", url: "https://www.nomura.com/" },
+  { name: "Nomura", logo: "/banks/nomura.jpeg", url: "https://www.nomura.com/" },
   {
     name: "Standard Chartered",
     logo: "/banks/standard-chartered.jpeg",
