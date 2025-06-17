@@ -1,7 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Contact, GaugeCircle, Settings, HandCoins, BarChart3, ArrowRightLeft, RefreshCw } from "lucide-react";
+import {
+  Bot,
+  Contact,
+  GaugeCircle,
+  Settings,
+  HandCoins,
+  BarChart3,
+  ArrowRightLeft,
+  RefreshCw,
+  Info,
+} from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
@@ -67,6 +77,11 @@ const data = {
       title: "AI Assistant",
       url: "/ai-assistant",
       icon: Bot,
+    },
+    {
+      title: "About Us",
+      url: "/about-us",
+      icon: Info,
     },
     {
       title: "Settings",
