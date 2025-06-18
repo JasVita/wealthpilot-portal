@@ -53,6 +53,10 @@ const data = {
           url: "/dashboard/insights-trends",
         },
         {
+          title: "Financial Overview",
+          url: "/dashboard/financial-overview",
+        },
+        {
           title: "Summary (Coming soon...)",
           url: "/dashboard/summary",
         },
