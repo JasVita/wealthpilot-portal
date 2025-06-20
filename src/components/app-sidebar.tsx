@@ -3,7 +3,6 @@
 import * as React from "react";
 import {
   Bot,
-  Contact,
   GaugeCircle,
   Settings,
   HandCoins,
@@ -11,6 +10,9 @@ import {
   ArrowRightLeft,
   RefreshCw,
   Info,
+  Users,
+  Files,
+  ShieldCheck,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -31,21 +33,39 @@ const data = {
   },
   navMain: [
     {
-      title: "Clients",
-      url: "/clients",
-      icon: Contact,
-    },
-    {
       title: "Dashboard",
       url: "/dashboard",
       icon: GaugeCircle,
+      // items: [
+      //   {
+      //     title: "Overview (Coming soon...)",
+      //     url: "/dashboard/overview",
+      //   },
+      //   {
+      //     title: "Client Overview",
+      //     url: "/dashboard/client-overview",
+      //   },
+      //   {
+      //     title: "Insights and Trends",
+      //     url: "/dashboard/insights-trends",
+      //   },
+      //   {
+      //     title: "Financial Overview",
+      //     url: "/dashboard/financial-overview",
+      //   },
+      //   {
+      //     title: "Summary (Coming soon...)",
+      //     url: "/dashboard/summary",
+      //   },
+      // ],
+    },
+    {
+      title: "Clients",
+      url: "/clients",
+      icon: Users,
       items: [
         {
-          title: "Overview (Coming soon...)",
-          url: "/dashboard/overview",
-        },
-        {
-          title: "Client Overview",
+          title: "Overview",
           url: "/dashboard/client-overview",
         },
         {
@@ -53,30 +73,61 @@ const data = {
           url: "/dashboard/insights-trends",
         },
         {
-          title: "Financial Overview",
-          url: "/dashboard/financial-overview",
+          title: "Orders",
+          url: "/order-management",
         },
         {
-          title: "Summary (Coming soon...)",
-          url: "/dashboard/summary",
+          title: "Structured Products",
+          url: "/sp-lifecycle",
+          icon: RefreshCw,
+        },
+        {
+          title: "CRM",
+          url: "/crm",
+          icon: RefreshCw,
+        },
+        {
+          title: "Documents",
+          url: "/documents",
+          icon: RefreshCw,
+        },
+        {
+          title: "Fee & Billing",
+          url: "/fee-bill",
+          icon: RefreshCw,
+        },
+        {
+          title: "Settings",
+          url: "/client-settings",
+          icon: RefreshCw,
         },
       ],
     },
     {
-      title: "Trade retrocession",
+      title: "Documents",
+      url: "/documents",
+      icon: Files,
+    },
+    {
+      title: "Trade Retrocession",
       url: "/trade-retrocession",
       icon: BarChart3,
     },
     {
-      title: "SP LifeCycle",
-      url: "/sp-lifecycle",
-      icon: RefreshCw,
+      title: "Complience",
+      url: "/compliance",
+      icon: ShieldCheck,
     },
-    {
-      title: "Order Management",
-      url: "/order-management",
-      icon: ArrowRightLeft,
-    },
+    // {
+    //   title: "SP LifeCycle",
+    //   url: "/sp-lifecycle",
+    //   icon: RefreshCw,
+    // },
+    // {
+    //   title: "Order Management",
+    //   url: "/order-management",
+    //   icon: ArrowRightLeft,
+    // },
     {
       title: "AI Assistant",
       url: "/ai-assistant",

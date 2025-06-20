@@ -23,7 +23,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
-  const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, currClient } = useWealthStore();
+  const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, currClient, addUploadBatch } =
+    useWealthStore();
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
@@ -33,6 +34,12 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     try {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
+      const fileMeta = files.map((file, idx) => ({
+        name: file.name,
+        url: fileUrls[idx],
+      }));
+      addUploadBatch(fileMeta);
+      // addUploadBatch(fileUrls);
 
       const {
         data: { task1_id },

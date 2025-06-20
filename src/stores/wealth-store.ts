@@ -12,12 +12,13 @@ interface WealthState {
   task2ID: string;
   msgLoad: boolean;
   currClient: string;
-
   alerts: AlertItem[];
   news: NewsItem[];
+  uploadBatches: any;
+
+  addUploadBatch: (files: { name: string; url: string }[]) => void;
   setAlerts: (data: AlertItem[]) => void;
   setNews: (data: NewsItem[]) => void;
-
   setCurrClient: (client: string) => void;
   setPieDataSets: (data: PieData[]) => void;
   setTableDataArray: (data: StockTable[]) => void;
@@ -42,7 +43,12 @@ export const useWealthStore = create<WealthState>()(
       currClient: "Overall",
       alerts: [],
       news: [],
+      uploadBatches: [],
 
+      addUploadBatch: (files) =>
+        set((state) => ({
+          uploadBatches: [...state.uploadBatches, { files }],
+        })),
       setAlerts: (data) => set({ alerts: data }),
       setNews: (data) => set({ news: data }),
       setCurrClient: (client) => set({ currClient: client }),
