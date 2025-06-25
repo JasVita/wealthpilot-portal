@@ -103,18 +103,18 @@ const data = {
         },
       ],
     },
-    {
-      title: "Documents",
-      url: "/documents",
-      icon: Files,
-    },
+    // {
+    //   title: "Documents",
+    //   url: "/documents",
+    //   icon: Files,
+    // },
     {
       title: "Trade Retrocession",
       url: "/trade-retrocession",
       icon: BarChart3,
     },
     {
-      title: "Complience",
+      title: "Compliance",
       url: "/compliance",
       icon: ShieldCheck,
     },

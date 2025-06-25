@@ -107,3 +107,51 @@ export interface NewsItem {
   trading_insight: string;
   impact: string;
 }
+
+/* ───────────────────────────────────────────────────────────────────────── *\
+|*  Core “bucket” keys that can appear in each bank table object             *|
+\* ───────────────────────────────────────────────────────────────────────── */
+export type BankTableKey =
+  | "cash_and_equivalents"
+  | "direct_fixed_income"
+  | "fixed_income_funds"
+  | "direct_equities"
+  | "equities_fund"
+  | "alternative_fund"
+  | "structured_products"
+  | "loans";
+
+/* ───────────────────────────────────────────────────────────────────────── *\
+|*  The shape of **one** bank record in `uiTables`                           *|
+\* ───────────────────────────────────────────────────────────────────────── */
+export interface BankEntry {
+  bank: string; // "UBS", "HSBC", …
+  as_of_date: string; // "30-04-2025", …
+
+  /* buckets (each may be empty) */
+  cash_and_equivalents: any[];
+  direct_fixed_income: any[];
+  fixed_income_funds: any[];
+  direct_equities: any[];
+  equities_fund: any[];
+  alternative_fund: any[];
+  structured_products: any[];
+  loans: any[];
+}
+
+/* Alias if you ever want to talk about the table object itself */
+export type BankTables = Pick<BankEntry, BankTableKey>; // { cash_and_equivalents: any[]; … }
+
+/* ───────────────────────────────────────────────────────────────────────── *\
+|*  What actually gets pushed to `addUploadBatch`                            *|
+\* ───────────────────────────────────────────────────────────────────────── */
+export interface UploadBatch {
+  /** S3 (or presigned) URLs in the same order the user uploaded them */
+  urls: string[];
+
+  /** Parsed results straight from your existing `uiTables` array */
+  banks: BankEntry[];
+
+  /** Display helpers like "UBS [30-04-2025]" built while mapping */
+  bankTags: string[];
+}

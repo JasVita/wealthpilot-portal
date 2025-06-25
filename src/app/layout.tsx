@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Control your Wealth with AI",
 };
 
+import { Toaster } from "@/components/ui/sonner";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -15,6 +17,7 @@ export default function RootLayout({
     <html suppressHydrationWarning lang="en">
       <body suppressHydrationWarning className="">
         {children}
+        <Toaster />
       </body>
     </html>
   );

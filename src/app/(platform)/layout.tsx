@@ -18,6 +18,7 @@ import FileUpload from "@/components/file-upload";
 import { uploadFileToS3 } from "@/lib/s3Upload";
 import { useWealthStore } from "@/stores/wealth-store";
 import axios from "axios";
+import { BankEntry, BankTableKey, BankTables, UploadBatch } from "@/types";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -28,18 +29,13 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
+    console.log("Uploading files:", files);
 
     if (!files.length) return alert("Please upload files first.");
 
     try {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
-      const fileMeta = files.map((file, idx) => ({
-        name: file.name,
-        url: fileUrls[idx],
-      }));
-      addUploadBatch(fileMeta);
-      // addUploadBatch(fileUrls);
 
       const {
         data: { task1_id },
@@ -61,19 +57,46 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       setPieDataSets(formattedPie);
 
       const rawTable = JSON.parse(completed.result.Table);
-      const uiTables = rawTable.map((bank: any) => ({
-        bank: bank.bank,
-        as_of_date: bank.as_of_date,
-        cash_and_equivalents: bank.cash_and_equivalents ?? [],
-        direct_fixed_income: bank.direct_fixed_income ?? [],
-        fixed_income_funds: bank.fixed_income_funds ?? [],
-        direct_equities: bank.direct_equities ?? [],
-        equities_fund: bank.equities_fund ?? [],
-        alternative_fund: bank.alternative_fund ?? [],
-        structured_products: bank.structured_products ?? [],
-        loans: bank.loans ?? [],
-      }));
+
+      const uiTables = rawTable.map((bank: any, i: number) => {
+        return {
+          bank: bank.bank,
+          as_of_date: bank.as_of_date,
+          cash_and_equivalents: bank.cash_and_equivalents ?? [],
+          direct_fixed_income: bank.direct_fixed_income ?? [],
+          fixed_income_funds: bank.fixed_income_funds ?? [],
+          direct_equities: bank.direct_equities ?? [],
+          equities_fund: bank.equities_fund ?? [],
+          alternative_fund: bank.alternative_fund ?? [],
+          structured_products: bank.structured_products ?? [],
+          loans: bank.loans ?? [],
+        };
+      });
       setTableDataArray(uiTables);
+
+      rawTable.forEach((bank: any, i: number) => {
+        const uiBank = {
+          bank: bank.bank,
+          as_of_date: bank.as_of_date,
+          cash_and_equivalents: bank.cash_and_equivalents ?? [],
+          direct_fixed_income: bank.direct_fixed_income ?? [],
+          fixed_income_funds: bank.fixed_income_funds ?? [],
+          direct_equities: bank.direct_equities ?? [],
+          equities_fund: bank.equities_fund ?? [],
+          alternative_fund: bank.alternative_fund ?? [],
+          structured_products: bank.structured_products ?? [],
+          loans: bank.loans ?? [],
+        };
+
+        const singleBatch: UploadBatch = {
+          urls: [fileUrls[i]], // one PDF only
+          banks: [uiBank], // one bank only
+          bankTags: [`${bank.bank} [${bank.as_of_date}]`],
+        };
+
+        addUploadBatch(singleBatch); // 🔸 push once per file
+      });
+
       setDownloadURL(completed.result.Excel_Report_URL);
       setTask2ID(completed.task2_id);
       setStatus("success");

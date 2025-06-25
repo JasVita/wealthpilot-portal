@@ -1,7 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import axios from "axios";
-import { FullServerResponseSchema, type PieData, type StockTable, type Message, AlertItem, NewsItem } from "@/types";
+import {
+  FullServerResponseSchema,
+  type PieData,
+  type StockTable,
+  type Message,
+  AlertItem,
+  NewsItem,
+  UploadBatch,
+} from "@/types";
 
 interface WealthState {
   pieDataSets: PieData[];
@@ -14,9 +22,9 @@ interface WealthState {
   currClient: string;
   alerts: AlertItem[];
   news: NewsItem[];
-  uploadBatches: any;
+  uploadBatches: UploadBatch[];
 
-  addUploadBatch: (files: { name: string; url: string }[]) => void;
+  addUploadBatch: (batch: UploadBatch) => void;
   setAlerts: (data: AlertItem[]) => void;
   setNews: (data: NewsItem[]) => void;
   setCurrClient: (client: string) => void;
@@ -45,9 +53,9 @@ export const useWealthStore = create<WealthState>()(
       news: [],
       uploadBatches: [],
 
-      addUploadBatch: (files) =>
+      addUploadBatch: (batch) =>
         set((state) => ({
-          uploadBatches: [...state.uploadBatches, { files }],
+          uploadBatches: [...state.uploadBatches, batch],
         })),
       setAlerts: (data) => set({ alerts: data }),
       setNews: (data) => set({ news: data }),
