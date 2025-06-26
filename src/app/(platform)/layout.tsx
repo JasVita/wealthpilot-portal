@@ -92,6 +92,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           urls: [fileUrls[i]], // one PDF only
           banks: [uiBank], // one bank only
           bankTags: [`${bank.bank} [${bank.as_of_date}]`],
+          excelURL: completed.result.Excel_Report_URL,
         };
 
         addUploadBatch(singleBatch); // 🔸 push once per file

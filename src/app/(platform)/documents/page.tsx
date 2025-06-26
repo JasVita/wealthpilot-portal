@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWealthStore } from "@/stores/wealth-store";
-import { FileText } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { StockTable } from "@/types";
 
 const formatCurrency = (value: number): string =>
@@ -158,9 +158,25 @@ export default function DocumentsPage() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="w-[calc(100%-40px)] h-[calc(100%-40px)] py-10 overflow-auto max-w-none sm:max-w-screen-2xl">
+                <div className="flex justify-end mb-4 px-4">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="gap-2"
+                    onClick={() => {
+                      console.log(`batch.excelUrl`, batch.excelURL);
+                      if (batch.excelURL) window.open(batch.excelURL, "_blank");
+                    }}
+                    disabled={!batch?.excelURL}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Excel Report
+                  </Button>
+                </div>
                 <DialogHeader className="p-4 hidden">
                   <DialogTitle className="truncate">{(batch?.bankTags ?? []).join(", ")}</DialogTitle>
                 </DialogHeader>
+
                 <div className="flex w-full h-[calc(100%-4rem)]">
                   <div className="w-1/2 px-2 overflow-auto flex flex-col gap-10">
                     {(batch?.urls ?? []).map((url: string | undefined, i: number) => (

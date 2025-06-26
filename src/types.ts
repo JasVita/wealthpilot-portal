@@ -154,6 +154,9 @@ export interface UploadBatch {
 
   /** Display helpers like "UBS [30-04-2025]" built while mapping */
   bankTags: string[];
+
+  /** URL to download excel file */
+  excelURL: string;
 }
 
 // types and helpers
