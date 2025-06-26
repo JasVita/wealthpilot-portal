@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Fragment, Key } from "react";
+import { useState, Fragment } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWealthStore } from "@/stores/wealth-store";
 import { FileText } from "lucide-react";
 import { StockTable } from "@/types";
-import { Description } from "@radix-ui/react-dialog";
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat("en-US", {
@@ -89,12 +88,12 @@ const BankTables = ({ banks = [] }: { banks?: StockTable[] }) => {
           <CardContent>
             <div className="space-y-6">
               {banks.map((bank, bankIdx) => {
-                const rows = (bank as any)[cfg.key];
+                const rows = (bank as any)?.[cfg.key];
                 if (!rows?.length) return null;
                 return (
                   <div key={bankIdx}>
                     <div className={`grid font-bold py-2 border-b border-gray-300 grid-cols-${cfg.columns.length}`}>
-                      <div>{bank.bank}</div>
+                      <div>{bank?.bank ?? "Unnamed Bank"}</div>
                       {cfg.columns.length === 3 && <div className="text-center">{cfg.columns[1]}</div>}
                       <div className="text-right">{cfg.columns[cfg.columns.length - 1]}</div>
                     </div>
@@ -129,11 +128,11 @@ function buildPdfSrc(url: string) {
 }
 
 export default function DocumentsPage() {
-  const { uploadBatches } = useWealthStore();
+  const { uploadBatches = [] } = useWealthStore();
   const [search, setSearch] = useState("");
 
   const filteredBatches = uploadBatches.filter((b: any) =>
-    b.bankTags.join(" ").toLowerCase().includes(search.toLowerCase())
+    (b?.bankTags ?? []).join(" ").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -152,26 +151,22 @@ export default function DocumentsPage() {
         <div className="space-y-4">
           {filteredBatches.map((batch: any, idx: number) => (
             <Dialog key={idx}>
-              {/* ────── Row trigger ────── */}
               <DialogTrigger asChild>
                 <Button variant="outline" className="w-full flex items-center gap-2 truncate">
                   <FileText className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">{batch.bankTags.join(", ")}</span>
+                  <span className="truncate">{(batch?.bankTags ?? ["Unnamed"]).join(", ")}</span>
                 </Button>
               </DialogTrigger>
-
-              {/* ────── Full-screen dialog ────── */}
               <DialogContent className="w-[calc(100%-40px)] h-[calc(100%-40px)] py-10 overflow-auto max-w-none sm:max-w-screen-2xl">
-                <Description className="mb-4 text-sm text-muted-foreground" />
                 <DialogHeader className="p-4 hidden">
-                  <DialogTitle className="truncate">{batch.bankTags.join(", ")}</DialogTitle>
+                  <DialogTitle className="truncate">{(batch?.bankTags ?? []).join(", ")}</DialogTitle>
                 </DialogHeader>
                 <div className="flex w-full h-[calc(100%-4rem)]">
                   <div className="w-1/2 px-2 overflow-auto flex flex-col gap-10">
-                    {batch.urls.map((url: string | undefined, i: number) => (
+                    {(batch?.urls ?? []).map((url: string | undefined, i: number) => (
                       <div className="flex flex-col flex-1" key={i}>
                         <span className="mb-2 text-xl font-semibold">
-                          {batch.bankTags?.[i] || batch.names?.[i] || `File ${i + 1}`}
+                          {batch?.bankTags?.[i] || batch?.names?.[i] || `File ${i + 1}`}
                         </span>
 
                         <iframe
