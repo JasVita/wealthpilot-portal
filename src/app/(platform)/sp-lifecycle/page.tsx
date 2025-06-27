@@ -46,8 +46,9 @@ const Index = () => {
         {/* Greeting Block */}
         <div className="mb-8">
           <p className="text-lg italic text-[#11223D]/60 max-w-4xl leading-relaxed">
-            Good to see you, James! Your structured notes are working quietly in the background — here's the full
-            picture, fresh to the minute. Tap any row to peek inside the payoff, coupon dates and next cash‑flow.
+            Good to see you, James! Your structured notes are working quietly in the background &ndash; here&apos;s the
+            full picture, fresh to the minute. Tap any row to peek inside the payoff, coupon dates and next
+            cash&ndash;flow.
           </p>
         </div>
 
