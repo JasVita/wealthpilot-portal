@@ -34,7 +34,6 @@ interface WealthState {
   setTask2ID: (input: string) => void;
   setDownloadURL: (input: string) => void;
   handleSendMessage: () => void;
-  parseAndStoreServerResult: (data: any) => void;
   clearStorage: () => void;
 }
 
@@ -65,33 +64,6 @@ export const useWealthStore = create<WealthState>()(
       setChatInput: (input) => set({ chatInput: input }),
       setTask2ID: (input) => set({ task2ID: input }),
       setDownloadURL: (input) => set({ downloadURL: input }),
-
-      parseAndStoreServerResult: (data) => {
-        const parsed = FullServerResponseSchema.safeParse(data);
-        if (!parsed.success) {
-          console.error("❌ Invalid server response:", parsed.error);
-          return;
-        }
-
-        const result = parsed.data;
-        const pieDataSets: PieData[] = (result.Pie_chart?.charts || []).map(
-          (chart): PieData => ({
-            labels: chart.labels || [],
-            datasets: [
-              {
-                data: chart.data || [],
-                backgroundColor: chart.colors || [],
-              },
-            ],
-          })
-        );
-
-        set({
-          pieDataSets,
-          tableDataArray: result.Table || [],
-          downloadURL: result.Excel_Report_URL || "",
-        });
-      },
 
       handleSendMessage: async () => {
         set({ msgLoad: true });

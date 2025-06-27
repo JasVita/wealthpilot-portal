@@ -394,3 +394,5 @@ export function buildCounterpartyRiskData(snapshotsInput: StockTable | StockTabl
     color: COLOR_MAP[name],
   }));
 }
+
+export type docid = { PK: string; SK: string };
