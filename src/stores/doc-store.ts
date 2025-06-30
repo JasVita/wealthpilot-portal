@@ -17,7 +17,7 @@ export const useDocStore = create<DocState>()(
       docids: [],
       saveIds: (newIds: docid[]) => {
         const newDocs = [...get().docids, ...newIds];
-        set({ docids: newIds });
+        set({ docids: newDocs });
       },
     }),
     { name: "doc-storage", version: 1 }

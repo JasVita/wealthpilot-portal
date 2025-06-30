@@ -17,6 +17,7 @@ import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import FileUpload from "@/components/file-upload";
 import { uploadFileToS3 } from "@/lib/s3Upload";
 import { useWealthStore } from "@/stores/wealth-store";
+import { useDocStore } from "@/stores/doc-store";
 import axios from "axios";
 import { BankEntry, BankTableKey, BankTables, UploadBatch } from "@/types";
 
@@ -26,28 +27,42 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, currClient, addUploadBatch } =
     useWealthStore();
+  const { saveIds } = useDocStore();
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
-    console.log("Uploading files:", files);
 
     if (!files.length) return alert("Please upload files first.");
 
     try {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
+      const [
+        {
+          data: { task1_id },
+        },
+        {
+          data: { task1_idnew },
+        },
+      ] = await Promise.all([
+        axios.post(`${process.env.NEXT_PUBLIC_API_URL}`, { fileUrls }),
+        axios.post("https://api.wealthpilotnew.turoid.ai/bankdemo2", { fileUrls }),
+      ]);
 
-      const {
-        data: { task1_id },
-      } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}`, { fileUrls });
-
-      const pollResult = async (): Promise<any> => {
-        const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/result/${task1_id}`);
-        return data.status === "ok" ? data : new Promise((res) => setTimeout(() => res(pollResult()), 10000));
+      const pollUntilOk = async (url: string, interval: number): Promise<any> => {
+        const { data } = await axios.get(url);
+        if (data.status === "ok") return data; // 🎉 finished
+        await new Promise((res) => setTimeout(res, interval)); // ⏱ wait
+        return pollUntilOk(url, interval); // 🔁 recurse
       };
-      const completed = await pollResult();
 
-      console.log("Upload completed:", completed);
+      const [completed, uploadRes] = await Promise.all([
+        pollUntilOk(`${process.env.NEXT_PUBLIC_API_URL}/result/${task1_id}`, 10_000),
+        pollUntilOk(`https://api.wealthpilotnew.turoid.ai/bankdemo2/result/${task1_idnew}`, 20_000),
+      ]);
+
+      console.log("overview completed:", completed);
+      console.log("documents completed", uploadRes);
 
       const piePayload = JSON.parse(completed.result.Pie_chart);
       const formattedPie = piePayload.charts.map(({ labels, data, colors }: any) => ({
@@ -75,28 +90,29 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       setTableDataArray(uiTables);
 
       rawTable.forEach((bank: any, i: number) => {
-        const uiBank = {
-          bank: bank.bank,
-          as_of_date: bank.as_of_date,
-          cash_and_equivalents: bank.cash_and_equivalents ?? [],
-          direct_fixed_income: bank.direct_fixed_income ?? [],
-          fixed_income_funds: bank.fixed_income_funds ?? [],
-          direct_equities: bank.direct_equities ?? [],
-          equities_fund: bank.equities_fund ?? [],
-          alternative_fund: bank.alternative_fund ?? [],
-          structured_products: bank.structured_products ?? [],
-          loans: bank.loans ?? [],
-        };
+        // const uiBank = {
+        //   bank: bank.bank,
+        //   as_of_date: bank.as_of_date,
+        //   cash_and_equivalents: bank.cash_and_equivalents ?? [],
+        //   direct_fixed_income: bank.direct_fixed_income ?? [],
+        //   fixed_income_funds: bank.fixed_income_funds ?? [],
+        //   direct_equities: bank.direct_equities ?? [],
+        //   equities_fund: bank.equities_fund ?? [],
+        //   alternative_fund: bank.alternative_fund ?? [],
+        //   structured_products: bank.structured_products ?? [],
+        //   loans: bank.loans ?? [],
+        // };
 
         const singleBatch: UploadBatch = {
           urls: [fileUrls[i]], // one PDF only
-          banks: [uiBank], // one bank only
+          // banks: [uiBank], // one bank only
           bankTags: [`${bank.bank} [${bank.as_of_date}]`],
-          excelURL: completed.result.Excel_Report_URL,
+          // excelURL: completed.result.Excel_Report_URL,
         };
 
         addUploadBatch(singleBatch); // 🔸 push once per file
       });
+      saveIds(uploadRes.ids);
 
       setDownloadURL(completed.result.Excel_Report_URL);
       setTask2ID(completed.task2_id);

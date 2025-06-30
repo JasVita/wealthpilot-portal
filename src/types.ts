@@ -150,13 +150,13 @@ export interface UploadBatch {
   urls: string[];
 
   /** Parsed results straight from your existing `uiTables` array */
-  banks: BankEntry[];
+  // banks: BankEntry[];
 
   /** Display helpers like "UBS [30-04-2025]" built while mapping */
   bankTags: string[];
 
   /** URL to download excel file */
-  excelURL: string;
+  // excelURL: string;
 }
 
 // types and helpers
