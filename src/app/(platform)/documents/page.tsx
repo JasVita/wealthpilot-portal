@@ -4,12 +4,18 @@ import { useState, useEffect, Fragment } from "react";
 import axios from "axios";
 import { useDocStore } from "@/stores/doc-store"; // ← IDs persisted locally
 import type { docid } from "@/types";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogContent2,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Download, FileText } from "lucide-react";
 import { DataTable } from "./data-table";
-import { useWealthStore } from "@/stores/wealth-store";
 
 /* ---------- helpers ---------- */
 function buildPdfSrc(url: string) {
@@ -24,12 +30,31 @@ const firstArray = (obj: unknown): Record<string, unknown>[] => {
   return [];
 };
 
+function applyColumnOrder<T extends Record<string, unknown>>(rows: T[], columnOrder: string[] | undefined): T[] {
+  if (!columnOrder?.length) return rows; // nothing to do
+  return rows.map((row) => {
+    const ordered: Record<string, unknown> = {};
+
+    /* explicit order first */
+    columnOrder.forEach((key) => {
+      if (key in row) ordered[key] = row[key];
+    });
+
+    /* any leftover keys come afterwards */
+    Object.keys(row).forEach((k) => {
+      if (!(k in ordered)) ordered[k] = row[k];
+    });
+
+    return ordered as T;
+  });
+}
+
 /* ---------- API-level types ---------- */
 interface PortfolioDocument {
-  doc_key: string; // ← Dynamo primary key (for Dialog title)
+  PK: string;
   bank_name: string;
-  pdf_urls: string; // ← MUST be returned by /api/get-documents
-  excel_report_url?: string;
+  pdf_url: string;
+  excel_report_url: string;
   assets: Record<string, unknown>;
   transactions: Record<string, unknown>;
 }
@@ -41,7 +66,6 @@ export default function DocumentsMergedPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const { uploadBatches } = useWealthStore();
 
   /* Fetch (or refetch) whenever id list changes --------------- */
   useEffect(() => {
@@ -53,23 +77,13 @@ export default function DocumentsMergedPage() {
       setLoading(true);
       setError(null);
       try {
+        const dev = [{ PK: "doc", SK: "1751511123670_1" }];
         const { data } = await axios.post<{
           items: (PortfolioDocument | null)[];
         }>("/api/get-documents", { keys: docids });
         const fetchedDocs = data.items.filter(Boolean) as PortfolioDocument[];
 
-        const merged = fetchedDocs.map((doc, idx) => {
-          const batch = uploadBatches?.[idx]; // may be undefined
-          const pdfFromBatch = Array.isArray(batch?.urls) ? batch.urls[0] : "";
-
-          return {
-            ...doc,
-            bank_name: batch?.bankTags?.[0] ?? doc.bank_name ?? "",
-            pdf_urls: pdfFromBatch,
-          };
-        });
-
-        setDocs(merged);
+        setDocs(fetchedDocs);
       } catch (e: any) {
         setError(e?.response?.data?.error ?? e.message);
       } finally {
@@ -103,73 +117,76 @@ export default function DocumentsMergedPage() {
               <DialogTrigger asChild>
                 <Button variant="outline" className="w-full flex items-center gap-2 truncate">
                   <FileText className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">{doc.bank_name || doc.doc_key || `Document ${idx + 1}`}</span>
+                  <span className="truncate">{doc.bank_name || doc.PK || `Document ${idx + 1}`}</span>
                 </Button>
               </DialogTrigger>
 
               {/* ----------- DIALOG CONTENT ----------- */}
-              <DialogContent className="w-[calc(100%-40px)] h-[calc(100%-40px)] py-10 overflow-auto max-w-none sm:max-w-screen-2xl">
-                <div className="flex justify-end mb-4 px-4">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="gap-2"
-                    onClick={() => doc.excel_report_url && window.open(doc.excel_report_url)}
-                    disabled={!doc.excel_report_url}
-                  >
-                    <Download className="h-4 w-4" />
-                    Download Excel
-                  </Button>
-                </div>
+              <DialogContent2 className="">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="gap-2 mb-4 w-1/3 mx-auto my-4"
+                  onClick={() => doc.excel_report_url && window.open(doc.excel_report_url)}
+                  disabled={!doc.excel_report_url}
+                >
+                  <Download className="h-4 w-4" />
+                  Download Excel
+                </Button>
 
                 <DialogHeader className="p-4 hidden">
                   <DialogTitle className="truncate">{doc.bank_name}</DialogTitle>
                 </DialogHeader>
 
                 {/* ---------- SPLIT VIEW ---------- */}
-                <div className="flex w-full h-[calc(100%-4rem)]">
-                  {/* LEFT – PDF(s) */}
-                  <div className="w-1/2 px-2 overflow-auto flex flex-col gap-10">
-                    <div className="flex flex-col flex-1">
-                      <span className="mb-2 text-xl font-semibold">{doc.bank_name}</span>
+                <div className="flex flex-1 overflow-hidden">
+                  {/* ---------- LEFT – PDF ---------- */}
+                  <div className="flex flex-col overflow-y-auto lg:basis-1/2 lg:pr-3 mb-6 lg:mb-0 min-w-0">
+                    <span className="mb-2 text-xl font-semibold truncate">{doc.bank_name}</span>
+
+                    {doc.pdf_url ? (
                       <iframe
-                        src={buildPdfSrc(doc.pdf_urls)}
+                        src={buildPdfSrc(doc.pdf_url)}
                         className="flex-1 w-full border-0 bg-white"
                         allowFullScreen
                       />
-                    </div>
+                    ) : (
+                      <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
+                    )}
                   </div>
 
-                  {/* RIGHT – ASSETS & TRANSACTIONS TABLES */}
-                  <div className="w-1/2 px-2 overflow-auto space-y-6">
-                    {/* ---------- ASSETS ---------- */}
-                    {!!doc.assets && (
+                  {/* ---------- RIGHT – TABLES ---------- */}
+                  <div className="flex flex-col overflow-y-auto lg:basis-1/2 lg:pl-3 space-y-6 min-w-0">
+                    {/* ======== ASSETS ======== */}
+                    {!!(doc.assets as { tableOrder: string[] })?.tableOrder?.length && (
                       <>
                         <h3 className="text-base font-semibold">Assets</h3>
-                        {Object.entries(doc.assets).map(([section, obj]) => (
-                          <DataTable key={section} title={section.replace(/_/g, " ")} rows={firstArray(obj)} />
-                        ))}
+                        {(doc.assets as { tableOrder: string[] }).tableOrder.map((sectionKey) => {
+                          const section = (doc.assets as any)[sectionKey];
+                          if (!section?.rows?.length) return null;
+
+                          const rows = applyColumnOrder(section.rows, section.columnOrder);
+                          return <DataTable key={sectionKey} title={sectionKey.replace(/_/g, " ")} rows={rows} />;
+                        })}
                       </>
                     )}
 
-                    {/* ---------- TRANSACTIONS ---------- */}
-                    {!!doc.transactions && (
+                    {/* ======== TRANSACTIONS ======== */}
+                    {!!(doc.transactions as { tableOrder: string[] })?.tableOrder?.length && (
                       <>
                         <h3 className="text-base font-semibold">Transactions</h3>
-                        {Object.entries(doc.transactions).flatMap(([txType, txObj]) =>
-                          Object.entries(txObj as Record<string, unknown>).map(([subKey, arr]) => (
-                            <DataTable
-                              key={`${txType}-${subKey}`}
-                              title={`${txType} — ${subKey}`}
-                              rows={firstArray(arr)}
-                            />
-                          ))
-                        )}
+                        {(doc.transactions as { tableOrder: string[] }).tableOrder.map((sectionKey) => {
+                          const section = (doc.transactions as any)[sectionKey];
+                          if (!section?.rows?.length) return null;
+
+                          const rows = applyColumnOrder(section.rows, section.columnOrder);
+                          return <DataTable key={sectionKey} title={sectionKey.replace(/_/g, " ")} rows={rows} />;
+                        })}
                       </>
                     )}
                   </div>
                 </div>
-              </DialogContent>
+              </DialogContent2>
             </Dialog>
           ))}
         </div>
