@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useUserStore } from "@/stores/user-store";
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"form">) {
   const router = useRouter();
+  const { setUsername, setID } = useUserStore();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -28,9 +30,12 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"form">)
 
       const data = await res.json();
 
-      if (!data.success) {
+      if (!data.success || !data.user) {
         throw new Error(data.message || "Login failed");
       }
+
+      setUsername(data.user.email);
+      setID(data.user.id);
 
       toast.success("Logged in successfully 🎉");
       router.push("/clients");
