@@ -20,14 +20,25 @@ import { useWealthStore } from "@/stores/wealth-store";
 import { useDocStore } from "@/stores/doc-store";
 import axios from "axios";
 import { BankEntry, BankTableKey, BankTables, UploadBatch } from "@/types";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useClientStore } from "@/stores/clients-store";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
-  const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, currClient, addUploadBatch } =
+  const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, addUploadBatch } =
     useWealthStore();
   const { saveIds } = useDocStore();
+  const { clients, order, currClient, setCurrClient } = useClientStore();
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
@@ -140,18 +151,22 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/clients">Client: </BreadcrumbLink>
-                </BreadcrumbItem>
-                {/* <BreadcrumbSeparator className="hidden md:block" /> */}
-                <BreadcrumbItem>
-                  {/* <BreadcrumbPage>{currClient}</BreadcrumbPage> */}
-                  {currClient}
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <span className="text-sm text-muted-foreground">Current client:</span>
+            <Select value={currClient} onValueChange={setCurrClient}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select a client" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Clients</SelectLabel>
+                  {order.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {clients[id]?.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Upload Button Dialog */}

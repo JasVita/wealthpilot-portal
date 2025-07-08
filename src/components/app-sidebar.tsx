@@ -13,6 +13,7 @@ import {
   Users,
   Files,
   ShieldCheck,
+  UserCog,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -33,9 +34,9 @@ const data = {
   },
   navMain: [
     {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: GaugeCircle,
+      title: "Clients Dashboard",
+      url: "/clients-dashboard",
+      icon: UserCog,
       // items: [
       //   {
       //     title: "Overview (Coming soon...)",

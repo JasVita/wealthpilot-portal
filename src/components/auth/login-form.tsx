@@ -7,10 +7,12 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useUserStore } from "@/stores/user-store";
+import { useClientStore } from "@/stores/clients-store";
 
 export function LoginForm({ className, ...props }: React.ComponentProps<"form">) {
   const router = useRouter();
   const { setUsername, setID } = useUserStore();
+  const { loadClients } = useClientStore();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -36,6 +38,8 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"form">)
 
       setUsername(data.user.email);
       setID(data.user.id);
+
+      await loadClients();
 
       toast.success("Logged in successfully 🎉");
       router.push("/clients");
