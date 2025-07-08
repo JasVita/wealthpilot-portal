@@ -30,6 +30,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useClientStore } from "@/stores/clients-store";
+import { useUserStore } from "@/stores/user-store";
+import { toast } from "sonner";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -39,6 +41,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     useWealthStore();
   const { saveIds } = useDocStore();
   const { clients, order, currClient, setCurrClient } = useClientStore();
+  const { id: user_id } = useUserStore();
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
@@ -57,23 +60,28 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         },
       ] = await Promise.all([
         axios.post(`${process.env.NEXT_PUBLIC_API_URL}`, { fileUrls }),
-        axios.post("https://api.wealthpilotnew.turoid.ai/bankdemo2", { fileUrls }),
+        axios.post("http://localhost:5101/upload", { fileUrls, client_id: currClient, user_id }),
       ]);
+      toast.info("Files uploaded. Analyzing...");
 
       const pollUntilOk = async (url: string, interval: number): Promise<any> => {
         const { data } = await axios.get(url);
-        if (data.status === "ok") return data; // 🎉 finished
+        if (data.state != "PENDING") return data; // 🎉 finished
+        if (url.includes("upload")) {
+          console.log(`new data received: ${JSON.stringify(data, null, 2)}`);
+        }
         await new Promise((res) => setTimeout(res, interval)); // ⏱ wait
         return pollUntilOk(url, interval); // 🔁 recurse
       };
 
       const [completed, uploadRes] = await Promise.all([
         pollUntilOk(`${process.env.NEXT_PUBLIC_API_URL}/result/${task1_id}`, 10_000),
-        pollUntilOk(`https://api.wealthpilotnew.turoid.ai/bankdemo2/result/${task1_idnew}`, 20_000),
+        // pollUntilOk(`https://api.wealthpilotnew.turoid.ai/upload/${task1_idnew}`, 20_000),
+        pollUntilOk(`http://localhost:5101/upload/${task1_idnew}`, 20_000),
       ]);
 
-      console.log("overview completed:", completed);
-      console.log("documents completed", uploadRes);
+      console.log("old completed:", completed);
+      console.log("new completed", uploadRes);
 
       const piePayload = JSON.parse(completed.result.Pie_chart);
       const formattedPie = piePayload.charts.map(({ labels, data, colors }: any) => ({
@@ -127,9 +135,11 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
       setDownloadURL(completed.result.Excel_Report_URL);
       setTask2ID(completed.task2_id);
+      toast.success("Analysis completed! Please see the documents tab for results.");
       setStatus("success");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Upload error:", err);
+      toast.error(err.message || "Upload failed, please try again later or contact us");
       setStatus("error");
       alert("Something went wrong during file processing.");
     }

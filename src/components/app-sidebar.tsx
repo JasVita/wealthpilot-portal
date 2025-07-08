@@ -20,6 +20,7 @@ import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { TeamSwitcher } from "@/components/team-switcher";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
+import Image from "next/image";
 
 const data = {
   user: {
@@ -29,7 +30,7 @@ const data = {
   },
   team: {
     name: "Wealth Pilot",
-    logo: HandCoins,
+    logo: () => <Image src="/WP_logo.svg" alt="Logo" width={80} height={80} />,
     plan: "Enterprise",
   },
   navMain: [
@@ -37,28 +38,6 @@ const data = {
       title: "Clients Dashboard",
       url: "/clients-dashboard",
       icon: UserCog,
-      // items: [
-      //   {
-      //     title: "Overview (Coming soon...)",
-      //     url: "/dashboard/overview",
-      //   },
-      //   {
-      //     title: "Client Overview",
-      //     url: "/dashboard/client-overview",
-      //   },
-      //   {
-      //     title: "Insights and Trends",
-      //     url: "/dashboard/insights-trends",
-      //   },
-      //   {
-      //     title: "Financial Overview",
-      //     url: "/dashboard/financial-overview",
-      //   },
-      //   {
-      //     title: "Summary (Coming soon...)",
-      //     url: "/dashboard/summary",
-      //   },
-      // ],
     },
     {
       title: "Clients",
@@ -67,48 +46,38 @@ const data = {
       items: [
         {
           title: "Overview",
-          url: "/dashboard/client-overview",
+          url: "/clients/overview",
         },
         {
           title: "Insights and Trends",
-          url: "/dashboard/insights-trends",
+          url: "/clients/insights-trends",
         },
         {
           title: "Orders",
-          url: "/order-management",
+          url: "/clients/orders",
         },
         {
           title: "Structured Products",
-          url: "/sp-lifecycle",
-          icon: RefreshCw,
+          url: "/clients/sp",
         },
         {
           title: "CRM",
-          url: "/crm",
-          icon: RefreshCw,
+          url: "/clients/crm",
         },
         {
           title: "Documents",
-          url: "/documents",
-          icon: RefreshCw,
+          url: "/clients/documents",
         },
         {
           title: "Fee & Billing",
-          url: "/fee-bill",
-          icon: RefreshCw,
+          url: "/clients/fee-bill",
         },
         {
           title: "Settings",
-          url: "/client-settings",
-          icon: RefreshCw,
+          url: "/clients/settings",
         },
       ],
     },
-    // {
-    //   title: "Documents",
-    //   url: "/documents",
-    //   icon: Files,
-    // },
     {
       title: "Trade Retrocession",
       url: "/trade-retrocession",
@@ -119,16 +88,6 @@ const data = {
       url: "/compliance",
       icon: ShieldCheck,
     },
-    // {
-    //   title: "SP LifeCycle",
-    //   url: "/sp-lifecycle",
-    //   icon: RefreshCw,
-    // },
-    // {
-    //   title: "Order Management",
-    //   url: "/order-management",
-    //   icon: ArrowRightLeft,
-    // },
     {
       title: "AI Assistant",
       url: "/ai-assistant",

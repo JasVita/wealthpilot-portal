@@ -39,7 +39,7 @@ export const useClientStore = create<ClientState>()(
     (set, get) => ({
       clients: {},
       order: [],
-      currClient: "placeholder",
+      currClient: "",
 
       setCurrClient: (id) => set(() => ({ currClient: id })),
 

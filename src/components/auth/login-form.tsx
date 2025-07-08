@@ -42,7 +42,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"form">)
       await loadClients();
 
       toast.success("Logged in successfully 🎉");
-      router.push("/clients");
+      router.push("/clients-dashboard");
     } catch (err: any) {
       toast.error(err.message || "Login failed");
     }
