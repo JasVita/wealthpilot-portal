@@ -123,7 +123,7 @@ function TreeNode({
         />
         <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
         <span className="font-medium truncate max-w-[14ch]">{node.name}</span>
-        <span className="ml-auto text-sm text-muted-foreground whitespace-nowrap">{node.value}</span>
+        {/* <span className="ml-auto text-sm text-muted-foreground whitespace-nowrap">{node.value}</span> */}
 
         {/* actions */}
         <div

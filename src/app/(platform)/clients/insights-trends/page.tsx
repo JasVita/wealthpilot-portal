@@ -19,6 +19,7 @@ import { Alert as AlertComponent } from "@/components/ui/alert";
 import axios from "axios";
 import { useWealthStore } from "@/stores/wealth-store";
 import type { AlertItem, NewsItem } from "@/types";
+import { useClientStore } from "@/stores/clients-store";
 
 type AlertCategory =
   | "1. Large/irregular fund movements"
@@ -62,8 +63,9 @@ const categoryMeta: Record<AlertCategory, { icon: JSX.Element; color: string }> 
 
 export default function Page() {
   const data = getMockClientData();
-  const { task2ID } = useWealthStore();
+  // const { task2ID } = useWealthStore();
   const { alerts, news, setAlerts, setNews } = useWealthStore();
+  const { currClient: clientId } = useClientStore();
 
   const formatCurrency = (value: number): string =>
     new Intl.NumberFormat("en-US", {
@@ -84,24 +86,80 @@ export default function Page() {
   //   }
   // };
 
+  // useEffect(() => {
+  //   const fetchInsights = async () => {
+  //     if (!task2ID) return; // Wait until it's defined
+
+  //     try {
+  //       console.log("task2ID:", task2ID);
+  //       // const result = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/result_news/${task2ID}`);
+  //       const result = await axios.get(`http://localhost:5101/news_alerts`);
+  //       console.log(JSON.stringify(result, null, 2));
+  //       const alertData = JSON.parse(result.data.result.Alerts);
+  //       let newsData;
+
+  //       try {
+  //         // Try to parse as JSON (object or array)
+  //         newsData = JSON.parse(result.data.result.News);
+  //       } catch (e) {
+  //         // If it fails (e.g., News is a plain string), just use the string
+  //         newsData = result.data.result.News;
+  //       }
+
+  //       const parsedAlerts: AlertItem[] = alertData.alerts.map((item: any) => ({
+  //         title: item.type,
+  //         description: item.description,
+  //         recommendation: item.recommendation,
+  //         category: item.category,
+  //       }));
+
+  //       // const parsedNews: NewsItem[] = newsData.flatMap((stockItem: any) =>
+  //       //   stockItem.news.map((item: any) => ({
+  //       //     stock: stockItem.stock,
+  //       //     title: item.title,
+  //       //     summary: item.summary,
+  //       //     publication_time: item.publication_time,
+  //       //     source: item.source,
+  //       //     trading_insight: item.trading_insight,
+  //       //     impact:
+  //       //       item.trading_insight.includes("bullish") || item.trading_insight.includes("strong")
+  //       //         ? "positive"
+  //       //         : item.trading_insight.includes("volatility") || item.trading_insight.includes("down")
+  //       //         ? "negative"
+  //       //         : "neutral",
+  //       //   }))
+  //       // );
+
+  //       const parsedNews: NewsItem[] = newsData.map((item: any) => ({
+  //         stock: item.ticker,
+  //         summary: item.summary,
+  //         publication_time: item.published_at,
+  //         source: item.source,
+  //         trading_insight: item.trading_insight,
+  //         impact: item.forecasted_impact_pct,
+  //         title: "item.title",
+  //       }));
+
+  //       setAlerts(parsedAlerts);
+  //       setNews(parsedNews);
+  //     } catch (err) {
+  //       console.error("Failed to fetch insights:", err);
+  //     }
+  //   };
+
+  //   fetchInsights();
+  // }, [task2ID]);
+
   useEffect(() => {
     const fetchInsights = async () => {
-      if (!task2ID) return; // Wait until it's defined
+      if (!clientId) return;
 
       try {
-        console.log("task2ID:", task2ID);
-        const result = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/result_news/${task2ID}`);
-        console.log(JSON.stringify(result, null, 2));
-        const alertData = JSON.parse(result.data.result.Alerts);
-        let newsData;
+        const result = await axios.get(`http://localhost:5101/client/${clientId}/news-alerts`);
+        console.log("news-alerts result:", JSON.stringify(result.data, null, 2));
 
-        try {
-          // Try to parse as JSON (object or array)
-          newsData = JSON.parse(result.data.result.News);
-        } catch (e) {
-          // If it fails (e.g., News is a plain string), just use the string
-          newsData = result.data.result.News;
-        }
+        const alertData = JSON.parse(result.data.alerts);
+        const rawNews = JSON.parse(result.data.news);
 
         const parsedAlerts: AlertItem[] = alertData.alerts.map((item: any) => ({
           title: item.type,
@@ -110,42 +168,27 @@ export default function Page() {
           category: item.category,
         }));
 
-        // const parsedNews: NewsItem[] = newsData.flatMap((stockItem: any) =>
-        //   stockItem.news.map((item: any) => ({
-        //     stock: stockItem.stock,
-        //     title: item.title,
-        //     summary: item.summary,
-        //     publication_time: item.publication_time,
-        //     source: item.source,
-        //     trading_insight: item.trading_insight,
-        //     impact:
-        //       item.trading_insight.includes("bullish") || item.trading_insight.includes("strong")
-        //         ? "positive"
-        //         : item.trading_insight.includes("volatility") || item.trading_insight.includes("down")
-        //         ? "negative"
-        //         : "neutral",
-        //   }))
-        // );
-
-        const parsedNews: NewsItem[] = newsData.map((item: any) => ({
-          stock: item.ticker,
-          summary: item.summary,
-          publication_time: item.published_at,
-          source: item.source,
-          trading_insight: item.trading_insight,
-          impact: item.forecasted_impact_pct,
-          title: "item.title",
-        }));
+        const parsedNews: NewsItem[] = Object.entries(rawNews).flatMap(([stockSymbol, stockData]: [string, any]) => {
+          return (stockData.news || []).map((item: any) => ({
+            stock: stockSymbol,
+            title: item.title ?? "Untitled", // fallback in case title is missing
+            summary: item.summary,
+            publication_time: item.published_at,
+            source: item.source,
+            trading_insight: item.trading_insight,
+            impact: item.forecasted_impact_pct?.toString() ?? "0",
+          }));
+        });
 
         setAlerts(parsedAlerts);
         setNews(parsedNews);
       } catch (err) {
-        console.error("Failed to fetch insights:", err);
+        console.error("❌ Failed to fetch news & alerts:", err);
       }
     };
 
     fetchInsights();
-  }, [task2ID]);
+  }, [clientId]);
 
   return (
     <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">

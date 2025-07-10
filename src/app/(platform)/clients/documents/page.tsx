@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Download, FileText } from "lucide-react";
 import { DataTable } from "./data-table";
 import type { docid } from "@/types";
+import { useClientStore } from "@/stores/clients-store";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 /* ---------- helpers ---------- */
 const buildPdfSrc = (url: string) => {
@@ -74,11 +76,13 @@ function renderTableRoot(root: TableRoot | undefined, sectionTitle: string) {
 /* ---------- API‑level types (minimal; extend as required) ---------- */
 interface PortfolioDocument {
   PK: string;
-  bank_name: string;
+  bankname: string;
+  as_of_date: string;
   pdf_url: string;
-  excel_report_url: string | null;
+  excel_url: string | null;
   assets?: TableRoot;
   transactions?: TableRoot;
+  tag: string;
 }
 
 /* ---------- Page ---------- */
@@ -88,40 +92,50 @@ export default function DocumentsMergedPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const { currClient } = useClientStore();
 
-  /* fetch whenever id list changes */
+  /* ---------- fetch documents for the active client ---------- */
+  const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
   useEffect(() => {
-    if (!docids.length) {
+    if (!currClient) {
       setDocs([]);
       return;
     }
+
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const dummy: docid[] = [
-          { PK: "doc", SK: "1751537347798_1" },
-          { PK: "doc", SK: "1751537347798_2" },
-        ];
-        const { data } = await axios.post<{ items: (PortfolioDocument | null)[] }>(
-          "/api/get-documents",
-          { keys: dummy } // <‑‑ replace dummy `dev` array
+        const { data } = await axios.post<{ status: string; documents: PortfolioDocument[]; message: string }>(
+          "http://localhost:5101/documents",
+          { client_id: currClient },
+          { headers: { "Content-Type": "application/json" } }
         );
-        setDocs((data.items ?? []).filter(Boolean) as PortfolioDocument[]);
+
+        if (data.status !== "ok") {
+          throw new Error(data.message || "Server responded with an error");
+        }
+        setDocs(
+          (data.documents ?? []).map((doc) => ({
+            ...doc,
+            tag: `${doc.bankname} (${fmtDate(doc.as_of_date)})`,
+          }))
+        );
+        console.log(JSON.stringify(data.documents, null, 2));
       } catch (e: any) {
-        setError(e?.response?.data?.error ?? e.message);
+        setError(e?.response?.data?.message || e.message);
       } finally {
         setLoading(false);
       }
     })();
-  }, [docids]);
+  }, [currClient]);
 
   /* ---------- render states ---------- */
   if (loading) return <p className="p-6">Loading…</p>;
   if (error) return <p className="p-6 text-red-600">Error: {error}</p>;
   if (!docs.length) return <p className="p-6 text-gray-500">No documents to display.</p>;
 
-  const filtered = docs.filter((d) => (d.bank_name ?? "").toLowerCase().includes(search.toLowerCase()));
+  const filtered = docs.filter((d) => d.tag.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <main className="p-6">
@@ -140,7 +154,9 @@ export default function DocumentsMergedPage() {
               <DialogTrigger asChild>
                 <Button variant="outline" className="w-full flex items-center gap-2 truncate">
                   <FileText className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">{doc.bank_name || doc.PK || `Document ${idx + 1}`}</span>
+                  <span className="truncate">
+                    {`${doc.bankname} (${fmtDate(doc.as_of_date)})` || `Document ${idx + 1}`}
+                  </span>
                 </Button>
               </DialogTrigger>
 
@@ -150,40 +166,46 @@ export default function DocumentsMergedPage() {
                   variant="outline"
                   size="lg"
                   className="gap-2 mb-4 w-1/3 mx-auto my-4"
-                  onClick={() => doc.excel_report_url && window.open(doc.excel_report_url)}
-                  disabled={!doc.excel_report_url}
+                  onClick={() => doc.excel_url && window.open(doc.excel_url)}
+                  disabled={!doc.excel_url}
                 >
                   <Download className="h-4 w-4" />
                   Download Excel
                 </Button>
 
                 <DialogHeader className="p-4 hidden">
-                  <DialogTitle className="truncate">{doc.bank_name}</DialogTitle>
+                  <DialogTitle className="truncate">{doc.bankname}</DialogTitle>
                 </DialogHeader>
 
                 {/* ───────── split view ───────── */}
-                <div className="flex flex-1 overflow-hidden">
-                  {/* left ‑ pdf */}
-                  <div className="flex flex-col overflow-y-auto lg:basis-1/2 lg:pr-3 mb-6 lg:mb-0 min-w-0">
-                    <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bank_name}</span>
+                <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
+                  {/* PDF Panel */}
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <div className="flex flex-col overflow-y-auto pr-2 h-full">
+                      <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
 
-                    {doc.pdf_url ? (
-                      <iframe
-                        src={buildPdfSrc(doc.pdf_url)}
-                        className="flex-1 w-full border-0 bg-white"
-                        allowFullScreen
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
-                    )}
-                  </div>
+                      {doc.pdf_url ? (
+                        <iframe
+                          src={buildPdfSrc(doc.pdf_url)}
+                          className="flex-1 w-full border-0 bg-white h-full"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
+                      )}
+                    </div>
+                  </ResizablePanel>
 
-                  {/* right ‑ tables */}
-                  <div className="flex flex-col overflow-y-auto lg:basis-1/2 lg:pl-3 space-y-6 min-w-0">
-                    {renderTableRoot(doc.assets, "Assets")}
-                    {renderTableRoot(doc.transactions, "Transactions")}
-                  </div>
-                </div>
+                  <ResizableHandle withHandle />
+
+                  {/* Table Panel */}
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
+                      {renderTableRoot(doc.assets, "Assets")}
+                      {renderTableRoot(doc.transactions, "Transactions")}
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
               </DialogContent2>
             </Dialog>
           ))}

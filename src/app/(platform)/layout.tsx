@@ -29,8 +29,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { useClientStore } from "@/stores/clients-store";
 import { useUserStore } from "@/stores/user-store";
+import { useUploadStore } from "@/stores/progress-store";
 import { toast } from "sonner";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
@@ -39,9 +41,52 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, addUploadBatch } =
     useWealthStore();
-  const { saveIds } = useDocStore();
   const { clients, order, currClient, setCurrClient } = useClientStore();
   const { id: user_id } = useUserStore();
+  const [progress, setProgress] = useState<{
+    done: number;
+    total: number;
+    state: "PENDING" | "PROGRESS" | "SUCCESS" | "PARTIAL_SUCCESS" | "FAILURE" | "REVOKED";
+    failed: any[];
+  }>({ done: 0, total: 0, state: "PENDING", failed: [] });
+
+  const isFinished = (state: string) =>
+    state === "SUCCESS" || state === "PARTIAL_SUCCESS" || state === "FAILURE" || state === "REVOKED";
+
+  const startPolling = (taskId: string, numFlies: number) => {
+    const pollId = setInterval(async () => {
+      try {
+        const { data } = await axios.get(`http://localhost:5101/upload/${taskId}`);
+
+        // ⬆️ update store
+        setProgress({
+          done: data.done ?? 0,
+          total: numFlies,
+          state: data.state,
+          failed: data.failed ?? [],
+        });
+
+        if (isFinished(data.state)) {
+          clearInterval(pollId);
+
+          if (data.state === "SUCCESS") {
+            toast.success("Analysis completed! All files processed.");
+            setStatus("success");
+          } else if (data.state === "PARTIAL_SUCCESS") {
+            toast.warning(`Finished with some errors – ${data.failed.length} of ${data.total} file(s) failed.`);
+            setStatus("warning"); // add a "warning" visual state if you like
+          } else {
+            toast.error("Upload failed – please try again.");
+            setStatus("error");
+          }
+        }
+      } catch {
+        clearInterval(pollId);
+        toast.error("Network error while checking progress.");
+        setStatus("error");
+      }
+    }, 60000);
+  };
 
   const handleUpload = async (files: File[]) => {
     setStatus("loading");
@@ -51,92 +96,28 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     try {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
-      const [
-        {
-          data: { task1_id },
-        },
-        {
-          data: { task1_idnew },
-        },
-      ] = await Promise.all([
-        axios.post(`${process.env.NEXT_PUBLIC_API_URL}`, { fileUrls }),
-        axios.post("http://localhost:5101/upload", { fileUrls, client_id: currClient, user_id }),
-      ]);
+
+      const {
+        data: { task1_idnew },
+      } = await axios.post("http://localhost:5101/upload", { fileUrls, client_id: currClient, user_id });
+
       toast.info("Files uploaded. Analyzing...");
+      setProgress({ done: 0, total: fileUrls.length, state: "PENDING", failed: [] });
+      startPolling(task1_idnew, fileUrls.length);
+      // const pollUntilOk = async (url: string, interval: number): Promise<any> => {
+      //   const { data } = await axios.get(url);
+      //   if (data.state != "PENDING") return data; // 🎉 finished
+      //   console.log(`new data received: ${JSON.stringify(data, null, 2)}`);
+      //   await new Promise((res) => setTimeout(res, interval)); // ⏱ wait
+      //   return pollUntilOk(url, interval); // 🔁 recurse
+      // };
 
-      const pollUntilOk = async (url: string, interval: number): Promise<any> => {
-        const { data } = await axios.get(url);
-        if (data.state != "PENDING") return data; // 🎉 finished
-        if (url.includes("upload")) {
-          console.log(`new data received: ${JSON.stringify(data, null, 2)}`);
-        }
-        await new Promise((res) => setTimeout(res, interval)); // ⏱ wait
-        return pollUntilOk(url, interval); // 🔁 recurse
-      };
+      // const uploadRes = pollUntilOk(`http://localhost:5101/upload/${task1_idnew}`, 20_000);
 
-      const [completed, uploadRes] = await Promise.all([
-        pollUntilOk(`${process.env.NEXT_PUBLIC_API_URL}/result/${task1_id}`, 10_000),
-        // pollUntilOk(`https://api.wealthpilotnew.turoid.ai/upload/${task1_idnew}`, 20_000),
-        pollUntilOk(`http://localhost:5101/upload/${task1_idnew}`, 20_000),
-      ]);
+      // console.log("new completed", uploadRes);
 
-      console.log("old completed:", completed);
-      console.log("new completed", uploadRes);
-
-      const piePayload = JSON.parse(completed.result.Pie_chart);
-      const formattedPie = piePayload.charts.map(({ labels, data, colors }: any) => ({
-        labels,
-        datasets: [{ data, backgroundColor: colors }],
-      }));
-      setPieDataSets(formattedPie);
-
-      const rawTable = JSON.parse(completed.result.Table);
-
-      const uiTables = rawTable.map((bank: any, i: number) => {
-        return {
-          bank: bank.bank,
-          as_of_date: bank.as_of_date,
-          cash_and_equivalents: bank.cash_and_equivalents ?? [],
-          direct_fixed_income: bank.direct_fixed_income ?? [],
-          fixed_income_funds: bank.fixed_income_funds ?? [],
-          direct_equities: bank.direct_equities ?? [],
-          equities_fund: bank.equities_fund ?? [],
-          alternative_fund: bank.alternative_fund ?? [],
-          structured_products: bank.structured_products ?? [],
-          loans: bank.loans ?? [],
-        };
-      });
-      setTableDataArray(uiTables);
-
-      rawTable.forEach((bank: any, i: number) => {
-        // const uiBank = {
-        //   bank: bank.bank,
-        //   as_of_date: bank.as_of_date,
-        //   cash_and_equivalents: bank.cash_and_equivalents ?? [],
-        //   direct_fixed_income: bank.direct_fixed_income ?? [],
-        //   fixed_income_funds: bank.fixed_income_funds ?? [],
-        //   direct_equities: bank.direct_equities ?? [],
-        //   equities_fund: bank.equities_fund ?? [],
-        //   alternative_fund: bank.alternative_fund ?? [],
-        //   structured_products: bank.structured_products ?? [],
-        //   loans: bank.loans ?? [],
-        // };
-
-        const singleBatch: UploadBatch = {
-          urls: [fileUrls[i]], // one PDF only
-          // banks: [uiBank], // one bank only
-          bankTags: [`${bank.bank} [${bank.as_of_date}]`],
-          // excelURL: completed.result.Excel_Report_URL,
-        };
-
-        addUploadBatch(singleBatch); // 🔸 push once per file
-      });
-      saveIds(uploadRes.ids);
-
-      setDownloadURL(completed.result.Excel_Report_URL);
-      setTask2ID(completed.task2_id);
-      toast.success("Analysis completed! Please see the documents tab for results.");
-      setStatus("success");
+      // toast.success("Analysis completed! Please see the documents tab for results.");
+      // setStatus("success");
     } catch (err: any) {
       console.error("Upload error:", err);
       toast.error(err.message || "Upload failed, please try again later or contact us");
@@ -178,6 +159,23 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
               </SelectContent>
             </Select>
           </div>
+
+          {status === "loading" && (
+            <div className="w-full mx-4">
+              <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
+              <span className="text-xs text-muted-foreground">
+                {progress.done}/{progress.total}
+              </span>
+            </div>
+          )}
+          {/* {status === "loading" && (
+            <div className="w-40 ml-4">
+              <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
+              <span className="text-xs text-muted-foreground">
+                {progress.done}/{progress.total}
+              </span>
+            </div>
+          )} */}
 
           {/* Upload Button Dialog */}
           <Dialog open={open} onOpenChange={setOpen}>
