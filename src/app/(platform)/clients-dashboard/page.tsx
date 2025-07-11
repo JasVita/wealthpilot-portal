@@ -18,81 +18,7 @@ interface NodeData {
   value: string;
   children?: NodeData[];
 }
-
-const seedClient: NodeData = {
-  id: "client-1",
-  type: "client",
-  name: "Adam Smith",
-  value: "$145,552,283",
-  children: [
-    {
-      id: "entity-1",
-      type: "entity",
-      name: "Adam Smith Trust",
-      value: "$77,218,254",
-      children: [
-        {
-          id: "acct-1",
-          type: "account",
-          name: "Bank of America (095)",
-          value: "$1,670,126",
-        },
-        {
-          id: "acct-2",
-          type: "account",
-          name: "Goldman Sachs (Online)",
-          value: "$225,000",
-        },
-      ],
-    },
-    {
-      id: "entity-2",
-      type: "entity",
-      name: "Adam Smith Revocable Trust",
-      value: "$68,334,029",
-      children: [
-        {
-          id: "acct-3",
-          type: "account",
-          name: "Malibu Point, LLC",
-          value: "$1,927,570",
-        },
-        {
-          id: "acct-4",
-          type: "account",
-          name: "Smith Investments, LLC",
-          value: "$200,009",
-        },
-      ],
-    },
-  ],
-};
 const generateId = (p: string) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
-
-function updateNode(root: NodeData, id: string, fn: (n: NodeData) => void): NodeData {
-  if (root.id === id) {
-    const copy = { ...root };
-    fn(copy);
-    return copy;
-  }
-  if (!root.children) return root;
-  return { ...root, children: root.children.map((c) => updateNode(c, id, fn)) };
-}
-
-function updateForest(forest: NodeData[], id: string, fn: (n: NodeData) => void): NodeData[] {
-  return forest.map((r) => updateNode(r, id, fn));
-}
-
-function deleteNode(root: NodeData, id: string): NodeData | null {
-  if (root.id === id) return null;
-  if (!root.children) return root;
-  const children = root.children.map((c) => deleteNode(c, id)).filter(Boolean) as NodeData[];
-  return { ...root, children };
-}
-
-function deleteFromForest(forest: NodeData[], id: string): NodeData[] {
-  return forest.map((r) => deleteNode(r, id)).filter(Boolean) as NodeData[];
-}
 
 function TreeNode({
   node,
@@ -107,7 +33,7 @@ function TreeNode({
   const router = useRouter();
   const Icon = { advisor: User, client: User, entity: Building2, account: Banknote }[node.type];
   const hasChildren = (node.children?.length ?? 0) > 0; // ✅ boolean
-
+  const { setCurrClient } = useClientStore();
   return (
     <div className="pl-4 border-l border-muted relative">
       <div
@@ -131,7 +57,14 @@ function TreeNode({
           onClick={(e) => e.stopPropagation()}
         >
           {node.type === "client" && (
-            <Button variant="ghost" size="icon" onClick={() => router.push(`/clients/${node.id}`)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setCurrClient(node.id);
+                router.push("/clients/overview"); // ✅ redirect to overview
+              }}
+            >
               <Eye className="h-4 w-4" />
             </Button>
           )}
