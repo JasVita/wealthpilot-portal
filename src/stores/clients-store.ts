@@ -73,7 +73,7 @@ export const useClientStore = create<ClientState>()(
 
         try {
           // const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL2}/add-client`, { name, user_id });
-          const res = await axios.post(`http://localhost:5101/add-client`, { name, user_id });
+          const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/add-client`, { name, user_id });
 
           if (res.status !== 201 && res.status !== 200) throw new Error(res.statusText);
 
@@ -103,7 +103,7 @@ export const useClientStore = create<ClientState>()(
 
         try {
           const { id: user_id } = useUserStore.getState();
-          await axios.delete(`http://localhost:5101/client/${id}`, {
+          await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/client/${id}`, {
             params: { user_id },
           });
         } catch (err) {
@@ -121,7 +121,7 @@ export const useClientStore = create<ClientState>()(
 
         try {
           const { id: user_id } = useUserStore.getState();
-          await axios.patch(`http://localhost:5101/client/${id}`, {
+          await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/client/${id}`, {
             user_id,
             ...partial,
           });
@@ -169,7 +169,7 @@ export const useClientStore = create<ClientState>()(
 
         const res = await axios.get<{ clients: { id: string; name: string }[] }>(
           // prod → `${process.env.NEXT_PUBLIC_API_URL2}/clients`
-          "http://localhost:5101/clients",
+          `${process.env.NEXT_PUBLIC_API_URL}/clients`,
           { params: { user_id } }
         );
 

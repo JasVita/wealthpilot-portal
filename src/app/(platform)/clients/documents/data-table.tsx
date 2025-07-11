@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { AllCommunityModule, ModuleRegistry, ColDef, ValueFormatterParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { themeQuartz } from "ag-grid-community";
+
 const myTheme = themeQuartz.withParams({
   columnBorder: true,
   headerFontFamily: "inherit",
@@ -13,9 +14,6 @@ const myTheme = themeQuartz.withParams({
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// import "ag-grid-community/styles/ag-grid.css";
-// import "ag-grid-community/styles/ag-theme-alpine.css";
-
 interface DataTableProps {
   title?: string;
   rows: Record<string, unknown>[] | undefined | null;
@@ -23,9 +21,11 @@ interface DataTableProps {
 }
 
 export const DataTable = ({ title, rows, height = 400 }: DataTableProps) => {
-  if (!Array.isArray(rows) || rows.length === 0) return null;
+  // 1️⃣ Normalise `rows` so hooks always see an array
+  const safeRows: Record<string, unknown>[] = Array.isArray(rows) ? rows : [];
 
-  const rowData = useMemo(() => rows, [rows]);
+  // 2️⃣ Hooks are now unconditional
+  const rowData = useMemo(() => safeRows, [safeRows]);
 
   const columnDefs: ColDef[] = useMemo(() => {
     if (!rowData.length) return [];
@@ -49,15 +49,13 @@ export const DataTable = ({ title, rows, height = 400 }: DataTableProps) => {
     }));
   }, [rowData]);
 
-  // ---- Render -------------------------------------------------------------------
+  // 3️⃣ Do the early return **after** hooks
+  if (!rowData.length) return null;
+
   return (
     <section className="space-y-2">
       {title && <h4 className="font-semibold">{title}</h4>}
-
-      <div
-        className="w-full"
-        style={{ height }} // makes the grid vertically scroll when needed
-      >
+      <div className="w-full" style={{ height }}>
         <AgGridReact rowData={rowData} columnDefs={columnDefs} animateRows theme={myTheme} />
       </div>
     </section>

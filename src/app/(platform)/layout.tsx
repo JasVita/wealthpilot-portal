@@ -56,7 +56,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const startPolling = (taskId: string, numFlies: number) => {
     const pollId = setInterval(async () => {
       try {
-        const { data } = await axios.get(`http://localhost:5101/upload/${taskId}`);
+        const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/upload/${taskId}`);
 
         // ⬆️ update store
         setProgress({
@@ -99,25 +99,11 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
       const {
         data: { task1_idnew },
-      } = await axios.post("http://localhost:5101/upload", { fileUrls, client_id: currClient, user_id });
+      } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, { fileUrls, client_id: currClient, user_id });
 
       toast.info("Files uploaded. Analyzing...");
       setProgress({ done: 0, total: fileUrls.length, state: "PENDING", failed: [] });
       startPolling(task1_idnew, fileUrls.length);
-      // const pollUntilOk = async (url: string, interval: number): Promise<any> => {
-      //   const { data } = await axios.get(url);
-      //   if (data.state != "PENDING") return data; // 🎉 finished
-      //   console.log(`new data received: ${JSON.stringify(data, null, 2)}`);
-      //   await new Promise((res) => setTimeout(res, interval)); // ⏱ wait
-      //   return pollUntilOk(url, interval); // 🔁 recurse
-      // };
-
-      // const uploadRes = pollUntilOk(`http://localhost:5101/upload/${task1_idnew}`, 20_000);
-
-      // console.log("new completed", uploadRes);
-
-      // toast.success("Analysis completed! Please see the documents tab for results.");
-      // setStatus("success");
     } catch (err: any) {
       console.error("Upload error:", err);
       toast.error(err.message || "Upload failed, please try again later or contact us");

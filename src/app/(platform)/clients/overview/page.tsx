@@ -119,7 +119,7 @@ export default function Page() {
           status: string;
           overview_data: OverviewRow[];
           message: string;
-        }>("http://localhost:5101/overviews", { client_id: currClient });
+        }>(`${process.env.NEXT_PUBLIC_API_URL}/overviews`, { client_id: currClient });
         console.log(`Recevied Data: ${JSON.stringify(data, null, 2)}`);
 
         if (data.status !== "ok") throw new Error(data.message || "request failed");

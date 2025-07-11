@@ -107,7 +107,7 @@ export default function DocumentsMergedPage() {
       setError(null);
       try {
         const { data } = await axios.post<{ status: string; documents: PortfolioDocument[]; message: string }>(
-          "http://localhost:5101/documents",
+          `${process.env.NEXT_PUBLIC_API_URL}/documents`,
           { client_id: currClient },
           { headers: { "Content-Type": "application/json" } }
         );
