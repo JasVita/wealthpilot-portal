@@ -3,28 +3,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircleIcon } from "lucide-react";
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
+import axios from "axios";
+
 import { useClientStore } from "@/stores/clients-store";
 import { DataTable } from "../documents/data-table";
-import axios from "axios";
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title, ChartDataLabels);
 
+/* ---------------------------------------------------------------- types -- */
 interface OverviewRow {
-  month_date: string; // "2025-04-01"
-  table_data: any; // PJ – not used on this page yet
+  month_date: string;
+  table_data: any;
   pie_chart_data: {
-    charts: {
-      data: number[];
-      labels: string[];
-      colors: string[];
-      title: string;
-    }[];
+    charts: { data: number[]; labels: string[]; colors: string[]; title: string }[];
   };
 }
 
+/* ----------------------------------------------------------- static maps -- */
 const assetKeys = [
   "cash_and_equivalents",
   "direct_fixed_income",
@@ -47,12 +48,26 @@ const assetLabels: Record<(typeof assetKeys)[number], string> = {
   loans: "Loans",
 };
 
+/* ---------------------------------------------------------------- helper -- */
+const fmtCurrency = (v: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(v);
+
+/* ==================================================================== UI == */
 export default function Page() {
   const { currClient } = useClientStore();
 
   const [overviews, setOverviews] = useState<OverviewRow[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  /* ---------------------------------------------------- derived (memoised) */
   const current = useMemo(
     () => overviews.find((o) => o.month_date === selectedDate) ?? null,
     [overviews, selectedDate]
@@ -70,79 +85,52 @@ export default function Page() {
   };
 
   const aggregatedTables = useMemo(() => {
-    // prepare empty buckets
     const acc: Record<string, any[]> = Object.fromEntries(assetKeys.map((k) => [k, []]));
-
     (current?.table_data?.tableData ?? []).forEach((bank: any) => {
       assetKeys.forEach((k) => {
-        // find whichever alias exists on this bank object
         const alias = keyAliases[k].find((a) => bank[a] !== undefined);
-        if (!alias) return; // nothing for this class
-
+        if (!alias) return;
         const assetBlock = bank[alias];
-        const rows = Array.isArray(assetBlock) // legacy shape
-          ? assetBlock
-          : Array.isArray(assetBlock?.rows) // new shape
-          ? assetBlock.rows
-          : []; // fallback – nothing
-
-        rows.forEach((row: any) => {
-          acc[k].push({ bank: bank.bank, ...row });
-        });
+        const rows = Array.isArray(assetBlock) ? assetBlock : Array.isArray(assetBlock?.rows) ? assetBlock.rows : [];
+        rows.forEach((row: any) => acc[k].push({ bank: bank.bank, ...row }));
       });
     });
-
     return acc;
-  }, [current?.table_data]); // assetKeys is static → no need in deps
+  }, [current?.table_data]);
 
   const pieDataSets = useMemo(() => {
     if (!current) return [];
-    const { charts } = current.pie_chart_data; /* or JSON.parse(current.pie_chart_data) */
-    return charts.map((c) => ({
+    return current.pie_chart_data.charts.map((c) => ({
       labels: c.labels,
-      datasets: [
-        {
-          data: c.data,
-          backgroundColor: c.colors,
-          borderWidth: 0,
-        },
-      ],
+      datasets: [{ data: c.data, backgroundColor: c.colors, borderWidth: 0 }],
     }));
   }, [current]);
 
+  /* ------------------------------------------------------------- fetch API */
   useEffect(() => {
     if (!currClient) return;
 
     (async () => {
+      setStatus("loading");
       try {
         const { data } = await axios.post<{
           status: string;
           overview_data: OverviewRow[];
           message: string;
         }>(`${process.env.NEXT_PUBLIC_API_URL}/overviews`, { client_id: currClient });
-        console.log(`Recevied Data: ${JSON.stringify(data, null, 2)}`);
 
-        if (data.status !== "ok") throw new Error(data.message || "request failed");
-        const rows = data.overview_data;
-        setOverviews(rows);
-
-        /* default to newest month */
-        if (rows.length) setSelectedDate(rows[0].month_date);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error("fetch overviews failed:", err);
+        if (data.status !== "ok") throw new Error(data.message);
+        setOverviews(data.overview_data);
+        if (data.overview_data.length) setSelectedDate(data.overview_data[0].month_date);
+        setStatus("ready");
+      } catch (err: any) {
+        setErrorMsg(err?.response?.data?.message || err.message || "Unknown error");
+        setStatus("error");
       }
     })();
   }, [currClient]);
 
-  const formatCurrency = (value: number): string =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-
+  /* --------------------------------------------------------- chart config */
   const pieOptions = {
     responsive: true,
     maintainAspectRatio: true,
@@ -166,11 +154,43 @@ export default function Page() {
     },
   };
 
+  if (status === "idle") return <></>;
+
+  if (status === "loading")
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex flex-col space-y-4">
+            <Skeleton className="h-6 w-2/3 rounded" />
+            <Skeleton className="h-[250px] w-full rounded-xl" />
+          </div>
+        ))}
+      </div>
+    );
+
+  if (status === "error")
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertCircleIcon className="h-5 w-5" />
+          <AlertTitle>Unable to load overview</AlertTitle>
+          <AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      </div>
+    );
+
+  if (!overviews.length)
+    return (
+      <p className="p-6 text-muted-foreground">
+        No consolidated data found for this client yet. Upload statements to generate an overview.
+      </p>
+    );
+
   const hasCharts = pieDataSets.length === 3;
 
   return (
     <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
-      {/* ── Month selector */}
+      {/* Month selector */}
       <div className="self-start mb-2">
         <Select value={selectedDate ?? undefined} onValueChange={setSelectedDate}>
           <SelectTrigger className="w-[200px]">
@@ -188,20 +208,20 @@ export default function Page() {
 
       {hasCharts ? (
         <>
-          {/* ── Total AUM */}
+          {/* Total AUM */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Total Net Worth</CardTitle>
               <CardDescription>Consolidated across all accounts</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-black">
-                {formatCurrency(pieDataSets[0].datasets[0].data.reduce((a: number, b: number) => a + b, 0))}
+              <div className="text-3xl font-bold">
+                {fmtCurrency(pieDataSets[0].datasets[0].data.reduce((a: number, b: number) => a + b, 0))}
               </div>
             </CardContent>
           </Card>
 
-          {/* ── Three pie charts */}
+          {/* Three pie charts */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { title: "Bank Exposure", desc: "Holdings across banks", label: "Bank Entities", data: pieDataSets[0] },
@@ -228,16 +248,13 @@ export default function Page() {
             ))}
           </div>
 
-          {/* asset tables stay unchanged (needs tableDataArray) */}
+          {/* Asset tables */}
           <div className="space-y-8 mt-6">
-            {assetKeys.map((k) => {
-              const rows = aggregatedTables[k];
-              if (rows.length === 0) return null; // skip empty classes
-
-              /* DataTable auto-generates columns; adding `bank` field makes the
-       source-bank visible without extra work. */
-              return <DataTable key={k} title={assetLabels[k]} rows={rows} height={400} />;
-            })}
+            {assetKeys.map((k) =>
+              aggregatedTables[k].length ? (
+                <DataTable key={k} title={assetLabels[k]} rows={aggregatedTables[k]} />
+              ) : null
+            )}
           </div>
         </>
       ) : (

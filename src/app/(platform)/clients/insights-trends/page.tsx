@@ -1,8 +1,11 @@
 "use client";
+
 import React, { JSX, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getMockClientData } from "@/app/mockData";
-import { AreaChart } from "@/components/ui/chart";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircleIcon } from "lucide-react";
+
 import {
   AlertTriangle,
   CalendarClock,
@@ -12,8 +15,10 @@ import {
   ShieldAlert,
   ActivitySquare,
 } from "lucide-react";
-import { Alert as AlertComponent } from "@/components/ui/alert";
+
 import axios from "axios";
+import { AreaChart } from "@/components/ui/chart";
+import { getMockClientData } from "@/app/mockData";
 import type { AlertItem, NewsItem } from "@/types";
 import { useClientStore } from "@/stores/clients-store";
 
@@ -30,8 +35,15 @@ function toNumber(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
+const fmtCurrency = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
 
-/* ─────────── Meta ─────────── */
+/* ─────────── Meta (unchanged) ─────────── */
 type AlertCategory =
   | "1. Large/irregular fund movements"
   | "2. Concentration or high-risk portfolio issues"
@@ -78,27 +90,23 @@ const fallbackMeta = {
 
 /* ─────────── Component ─────────── */
 export default function Page() {
-  const data = getMockClientData();
+  /* static (mock) cash-flow data for the chart */
+  const chartData = getMockClientData()?.cashFlow ?? [];
 
-  /* ► Local state instead of Zustand ◄ */
+  /* ─ Local state ─ */
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const { currClient: clientId } = useClientStore();
 
-  const formatCurrency = (value: number): string =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-
   /* ─────────── Fetch Insights ─────────── */
   useEffect(() => {
-    if (!clientId) return; // guard early
-    console.log("inside useEffect");
+    if (!clientId) return;
+
     const fetchInsights = async () => {
+      setStatus("loading");
       try {
         const { data: res } = await axios.get<{
           alerts: string;
@@ -135,22 +143,44 @@ export default function Page() {
 
         setAlerts(parsedAlerts);
         setNews(parsedNews);
-      } catch (err) {
+        setStatus("ready");
+      } catch (err: any) {
         console.error("❌ Failed to fetch news & alerts:", err);
-        /* Fallback to empty arrays so the UI shows “Loading …” instead of crashing */
-        setAlerts([]);
-        setNews([]);
+        setErrorMsg(err?.response?.data?.message || err.message || "Unknown error");
+        setStatus("error");
       }
     };
 
     void fetchInsights();
   }, [clientId]);
 
-  /* ─────────── Render ─────────── */
+  /* ─────────── Render States ─────────── */
+  if (status === "idle") return <></>;
+
+  if (status === "loading")
+    return (
+      <div className="p-6 space-y-4">
+        {/* <Skeleton className="h-[340px] w-full rounded-xl" /> */}
+        <Skeleton className="h-[220px] w-full rounded-xl" />
+        <Skeleton className="h-[160px] w-full rounded-xl" />
+      </div>
+    );
+
+  if (status === "error")
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertCircleIcon className="h-5 w-5" />
+          <AlertTitle>Unable to load insights</AlertTitle>
+          <AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      </div>
+    );
+
   return (
     <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
       {/* Cash Flow Chart */}
-      <Card className="card-hover">
+      {/* <Card className="card-hover">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">Monthly Cash Flow</CardTitle>
           <CardDescription>Income vs. Expenses over past 12 months</CardDescription>
@@ -158,16 +188,16 @@ export default function Page() {
         <CardContent className="pt-0">
           <div className="h-[300px] w-full">
             <AreaChart
-              data={data?.cashFlow ?? []}
+              data={chartData}
               index="month"
               categories={["income", "expense"]}
               colors={["#2A9D8F", "#E63946"]}
-              valueFormatter={formatCurrency}
+              valueFormatter={fmtCurrency}
               className="h-full w-full"
             />
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Market News */}
       <Card className="card-hover">
@@ -176,9 +206,9 @@ export default function Page() {
           <CardDescription>News affecting your portfolio</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {news.length ? (
-              news.map((item, idx) => {
+          {news.length ? (
+            <div className="space-y-4">
+              {news.map((item, idx) => {
                 const impactValue = toNumber(item?.impact) ?? 0;
                 const impactLabel = impactValue > 0 ? `+${impactValue}` : impactValue.toString();
                 const impactClass =
@@ -206,24 +236,26 @@ export default function Page() {
                     </div>
                   </div>
                 );
-              })
-            ) : (
-              <p className="text-sm text-muted-foreground">Loading news...</p>
-            )}
-          </div>
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {status === "ready" ? "No relevant news found for current holdings." : "Loading news..."}
+            </p>
+          )}
         </CardContent>
       </Card>
 
       {/* Alerts */}
       <div className="space-y-2">
         <h3 className="text-lg font-medium">Alerts & Notifications</h3>
-        <div className="space-y-3">
-          {alerts.length ? (
-            alerts.map((alert, index) => {
+        {alerts.length ? (
+          <div className="space-y-3">
+            {alerts.map((alert, index) => {
               const meta = categoryMeta[alert.category as AlertCategory] ?? fallbackMeta;
               return (
                 <div key={index} className={`${meta.color} p-2 rounded-lg border`}>
-                  <div className="flex flex-row items-start w-full">
+                  <div className="flex items-start">
                     <div className="mr-2 mt-1.5 shrink-0">{meta.icon}</div>
                     <div className="flex-1">
                       <h4 className="font-medium">{alert.title}</h4>
@@ -235,11 +267,13 @@ export default function Page() {
                   </div>
                 </div>
               );
-            })
-          ) : (
-            <p className="text-sm text-muted-foreground">Loading alerts...</p>
-          )}
-        </div>
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {status === "ready" ? "No alerts for this period." : "Loading alerts..."}
+          </p>
+        )}
       </div>
     </div>
   );

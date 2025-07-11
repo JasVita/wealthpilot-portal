@@ -3,15 +3,16 @@
 
 import { Fragment, useEffect, useState } from "react";
 import axios from "axios";
-import { useDocStore } from "@/stores/doc-store";
 import { Dialog, DialogTrigger, DialogHeader, DialogTitle, DialogContent2 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Download, FileText } from "lucide-react";
 import { DataTable } from "./data-table";
-import type { docid } from "@/types";
 import { useClientStore } from "@/stores/clients-store";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { AlertCircleIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /* ---------- helpers ---------- */
 const buildPdfSrc = (url: string) => {
@@ -29,6 +30,8 @@ function applyColumnOrder<T extends Record<string, unknown>>(rows: T[], columnOr
     return ordered as T;
   });
 }
+
+const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
 /* ---------- (generic) renderer for 2‑level table hierarchies ---------- */
 type TableBlock = { columnOrder: string[]; rows: Record<string, unknown>[] };
@@ -87,53 +90,80 @@ interface PortfolioDocument {
 
 /* ---------- Page ---------- */
 export default function DocumentsMergedPage() {
-  const docids: docid[] = useDocStore((s) => s.docids);
-  const [docs, setDocs] = useState<PortfolioDocument[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const { currClient } = useClientStore();
 
-  /* ---------- fetch documents for the active client ---------- */
-  const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+  const [docs, setDocs] = useState<PortfolioDocument[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
+  const [errorMsg, setErrorMsg] = useState<string>("");
+
+  /* ---------------------- fetch documents when client changes ------------- */
   useEffect(() => {
     if (!currClient) {
       setDocs([]);
+      setStatus("idle");
       return;
     }
 
     (async () => {
-      setLoading(true);
-      setError(null);
+      setStatus("loading");
       try {
-        const { data } = await axios.post<{ status: string; documents: PortfolioDocument[]; message: string }>(
-          `${process.env.NEXT_PUBLIC_API_URL}/documents`,
-          { client_id: currClient },
-          { headers: { "Content-Type": "application/json" } }
-        );
+        const { data } = await axios.post<{
+          status: string;
+          documents: PortfolioDocument[];
+          message: string;
+        }>(`${process.env.NEXT_PUBLIC_API_URL}/documents`, {
+          client_id: currClient,
+        });
 
-        if (data.status !== "ok") {
-          throw new Error(data.message || "Server responded with an error");
-        }
+        if (data.status !== "ok") throw new Error(data.message);
         setDocs(
           (data.documents ?? []).map((doc) => ({
             ...doc,
             tag: `${doc.bankname} (${fmtDate(doc.as_of_date)})`,
           }))
         );
-        console.log(JSON.stringify(data.documents, null, 2));
-      } catch (e: any) {
-        setError(e?.response?.data?.message || e.message);
-      } finally {
-        setLoading(false);
+        setStatus("ready");
+      } catch (err: any) {
+        setErrorMsg(err?.response?.data?.message || err?.message || "Unknown error");
+        setStatus("error");
       }
     })();
   }, [currClient]);
 
-  /* ---------- render states ---------- */
-  if (loading) return <p className="p-6">Loading…</p>;
-  if (error) return <p className="p-6 text-red-600">Error: {error}</p>;
-  if (!docs.length) return <p className="p-6 text-gray-500">No documents to display.</p>;
+  /* --------------------------- render states ------------------------------ */
+  if (status === "idle") return <></>;
+
+  if (status === "loading")
+    return (
+      <div className="flex flex-col p-6 gap-4">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} className="flex flex-col space-y-3 items-center">
+            {/* <Skeleton className="h-[125px] w-full rounded-xl" /> */}
+            <Skeleton className="h-7 w-3/4" />
+            <Skeleton className="h-7 w-1/2" />
+          </div>
+        ))}
+      </div>
+    );
+
+  if (status === "error")
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertCircleIcon className="h-5 w-5" />
+          <AlertTitle>Oops! Something went wrong.</AlertTitle>
+          <AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      </div>
+    );
+
+  if (!docs.length)
+    return (
+      <p className="p-6 text-gray-500">
+        No documents found for this client yet. Upload a bank statement to get started.
+      </p>
+    );
 
   const filtered = docs.filter((d) => d.tag.toLowerCase().includes(search.toLowerCase()));
 

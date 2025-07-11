@@ -53,9 +53,13 @@ const data = {
           url: "/clients/insights-trends",
         },
         {
-          title: "Orders",
-          url: "/clients/orders",
+          title: "Transaction History",
+          url: "/clients/transaction-history",
         },
+        // {
+        //   title: "Orders",
+        //   url: "/clients/orders",
+        // },
         {
           title: "Structured Products",
           url: "/clients/sp",
