@@ -11,14 +11,34 @@ import { cn } from "@/lib/utils";
 import { useClientStore } from "@/stores/clients-store";
 import { toast } from "sonner";
 
+/* -------------------------------------------------------------------------- */
+/*                                   Types                                    */
+/* -------------------------------------------------------------------------- */
+
 interface NodeData {
   id: string;
   type: "advisor" | "client" | "entity" | "account";
   name: string;
+  /** formatted value string, e.g. "$12 345 678" */
   value: string;
   children?: NodeData[];
 }
+
+/* -------------------------------------------------------------------------- */
+/*                               Helper utils                                 */
+/* -------------------------------------------------------------------------- */
+
 const generateId = (p: string) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
+
+const moneyFmt = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+/* -------------------------------------------------------------------------- */
+/*                                 Tree node                                  */
+/* -------------------------------------------------------------------------- */
 
 function TreeNode({
   node,
@@ -29,11 +49,18 @@ function TreeNode({
   onEdit: (n: NodeData) => void;
   onDelete: (n: NodeData) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const router = useRouter();
-  const Icon = { advisor: User, client: User, entity: Building2, account: Banknote }[node.type];
-  const hasChildren = (node.children?.length ?? 0) > 0; // ✅ boolean
+  const Icon =
+    {
+      advisor: User,
+      client: User,
+      entity: Building2,
+      account: Banknote,
+    }[node.type] || User;
+  const hasChildren = (node.children?.length ?? 0) > 0;
   const { setCurrClient } = useClientStore();
+
   return (
     <div className="pl-4 border-l border-muted relative">
       <div
@@ -49,7 +76,7 @@ function TreeNode({
         />
         <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
         <span className="font-medium truncate max-w-[14ch]">{node.name}</span>
-        {/* <span className="ml-auto text-sm text-muted-foreground whitespace-nowrap">{node.value}</span> */}
+        <span className="ml-auto text-sm text-muted-foreground whitespace-nowrap">{node.value}</span>
 
         {/* actions */}
         <div
@@ -62,16 +89,18 @@ function TreeNode({
               size="icon"
               onClick={() => {
                 setCurrClient(node.id);
-                router.push("/clients/overview"); // ✅ redirect to overview
+                router.push("/clients/overview");
               }}
             >
               <Eye className="h-4 w-4" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={() => onEdit(node)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
           {node.type !== "advisor" && (
+            <Button variant="ghost" size="icon" onClick={() => onEdit(node)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {node.type !== "advisor" && node.type !== "entity" && (
             <Button variant="ghost" size="icon" onClick={() => onDelete(node)}>
               <Trash className="h-4 w-4" />
             </Button>
@@ -90,24 +119,51 @@ function TreeNode({
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*                           Page component body                               */
+/* -------------------------------------------------------------------------- */
+
 export default function ClientManagementPage() {
-  // const [clients, setClients] = useState<NodeData[]>([seedClient]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<NodeData | null>(null);
   const [form, setForm] = useState({ name: "", value: "" });
   const { clients: storeClients, order, addClient, deleteClient, updateClient } = useClientStore();
-  const clients = useMemo(
-    () =>
-      order.map((id) => ({
+
+  /* ---------------------- build tree from pieChartData --------------------- */
+  const clients: NodeData[] = useMemo(() => {
+    return order.map((id) => {
+      const c = storeClients[id];
+      const pie = c.pieChartData;
+
+      // Default values
+      let total = 0;
+      let children: NodeData[] = [];
+
+      if (pie && Array.isArray(pie.charts)) {
+        const aum = pie.charts.find((ch) => ch.title === "AUM_ratio") ?? pie.charts[0];
+        if (aum) {
+          total = aum.data.reduce((acc: number, v: number) => acc + v, 0);
+          children = aum.labels.map((label: string, idx: number) => ({
+            id: `${id}-bank-${idx}`,
+            type: "entity",
+            name: label,
+            value: moneyFmt.format(aum.data[idx] ?? 0),
+            children: [],
+          }));
+        }
+      }
+
+      return {
         id,
         type: "client",
-        name: storeClients[id].name,
-        value: "$0",
-        children: [], // fill later when you add entities/accounts
-      })),
-    [storeClients, order]
-  );
-  /* ---------- dialog helpers ---------- */
+        name: c.name,
+        value: moneyFmt.format(total),
+        children,
+      } as NodeData;
+    });
+  }, [storeClients, order]);
+
+  /* ---------------------------- dialog helpers ----------------------------- */
   const openCreate = () => {
     setEditing(null);
     setForm({ name: "", value: "" });
@@ -119,15 +175,9 @@ export default function ClientManagementPage() {
     setDialogOpen(true);
   };
 
-  /* ---------- CRUD ---------- */
+  /* -------------------------------- CRUD ---------------------------------- */
   const handleSave = async () => {
     if (editing) {
-      // setClients((f) =>
-      //   updateForest(f, editing.id, (n) => {
-      //     n.name = form.name;
-      //     n.value = form.value;
-      //   })
-      // );
       try {
         await updateClient(editing.id, { name: form.name });
         toast.success("Client updated 🎉");
@@ -135,13 +185,6 @@ export default function ClientManagementPage() {
         toast.error(err.message || "Update failed");
       }
     } else {
-      const newNode: NodeData = {
-        id: generateId("client"),
-        type: "client",
-        name: form.name || "New Client",
-        value: "$0",
-        children: [],
-      };
       try {
         await addClient(form.name);
         toast.success("Client created 🎉");
@@ -163,7 +206,7 @@ export default function ClientManagementPage() {
     }
   };
 
-  /* ---------- UI ---------- */
+  /* -------------------------------- Render -------------------------------- */
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between">
@@ -184,7 +227,7 @@ export default function ClientManagementPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog (unchanged except for title) */}
+      {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -196,11 +239,6 @@ export default function ClientManagementPage() {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
-            {/* <Input
-              placeholder="Total value"
-              value={form.value}
-              onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
-            /> */}
           </div>
           <div className="flex justify-end gap-2 mt-6">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>

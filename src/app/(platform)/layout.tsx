@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import FileUpload from "@/components/file-upload";
-import { uploadFileToS3 } from "@/lib/s3Upload";
+// import { uploadFileToS3 } from "@/lib/s3Upload";
 import { useWealthStore } from "@/stores/wealth-store";
 import { useDocStore } from "@/stores/doc-store";
 import axios from "axios";
@@ -34,6 +34,7 @@ import { useClientStore } from "@/stores/clients-store";
 import { useUserStore } from "@/stores/user-store";
 import { useUploadStore } from "@/stores/progress-store";
 import { toast } from "sonner";
+import { uploadFileAction } from "@/lib/uploadFile";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -41,7 +42,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, addUploadBatch } =
     useWealthStore();
-  const { clients, order, currClient, setCurrClient } = useClientStore();
+  const { clients, order, currClient, setCurrClient, loadClients } = useClientStore();
   const { id: user_id } = useUserStore();
   const [progress, setProgress] = useState<{
     done: number;
@@ -79,6 +80,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             toast.error("Upload failed – please try again.");
             setStatus("error");
           }
+          loadClients();
         }
       } catch {
         clearInterval(pollId);
@@ -89,13 +91,13 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   };
 
   const handleUpload = async (files: File[]) => {
-    setStatus("loading");
-
     if (!files.length) return alert("Please upload files first.");
+    if (!currClient) return alert("Please select a client first.");
+    setStatus("loading");
 
     try {
       clearStorage();
-      const fileUrls = await Promise.all(files.map(uploadFileToS3));
+      const fileUrls = await Promise.all(files.map(uploadFileAction));
 
       const {
         data: { task1_idnew },

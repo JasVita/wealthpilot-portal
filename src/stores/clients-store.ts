@@ -7,9 +7,19 @@ export type News = Record<string, any>;
 export type Alerts = Record<string, any>;
 export type Overview = Record<string, any>;
 
+export interface PieChartData {
+  charts: {
+    data: number[];
+    title: string;
+    colors: string[];
+    labels: string[];
+  }[];
+}
+
 export interface Client {
   id: string;
   name: string;
+  pieChartData: PieChartData | null; // NEW
   news: News | null;
   alerts: Alerts | null;
   overviews: Overview[];
@@ -63,6 +73,7 @@ export const useClientStore = create<ClientState>()(
         const tempData: Client = {
           id: tempId,
           name,
+          pieChartData: null,
           news: null,
           alerts: null,
           overviews: [],
@@ -167,12 +178,11 @@ export const useClientStore = create<ClientState>()(
         const { id: user_id } = useUserStore.getState();
         if (!user_id) throw new Error("User not logged in – cannot fetch clients");
 
-        const res = await axios.get<{ clients: { id: string; name: string }[] }>(
-          // prod → `${process.env.NEXT_PUBLIC_API_URL2}/clients`
-          `${process.env.NEXT_PUBLIC_API_URL}/clients`,
-          { params: { user_id } }
-        );
+        type Row = { id: string; name: string; pie_chart_data: PieChartData | null };
 
+        const res = await axios.get<{ clients: Row[] }>(`${process.env.NEXT_PUBLIC_API_URL}/clients`, {
+          params: { user_id },
+        });
         if (res.status !== 200) throw new Error(res.statusText);
 
         const list = res.data.clients;
@@ -181,10 +191,11 @@ export const useClientStore = create<ClientState>()(
           const clients: Record<string, Client> = {};
           const order: string[] = [];
 
-          for (const { id, name } of list) {
+          for (const { id, name, pie_chart_data } of list) {
             clients[id] = {
               id,
               name,
+              pieChartData: pie_chart_data, // ← stash it
               news: null,
               alerts: null,
               overviews: [],

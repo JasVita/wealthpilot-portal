@@ -1,3 +1,5 @@
+import "server-only";
+
 import AWS from "aws-sdk";
 import { v4 as uuidv4 } from "uuid";
 
@@ -11,20 +13,20 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 
-export const uploadFileToS3 = async (file: File): Promise<string> => {
-  const fileKey = `${uuidv4()}-${file.name}`;
+/** Uploads a binary buffer to S3 and returns the public URL. */
+export async function uploadFileToS3(body: Buffer, fileName: string, mimeType: string) {
+  "use server"; // extra guard
+
+  const key = `${uuidv4()}-${fileName}`;
 
   await s3
     .putObject({
       Bucket: process.env.S3_BUCKET_NAME!,
-      Key: fileKey,
-      Body: file,
-      ContentType: file.type,
-      // Removed ACL line here
+      Key: key,
+      Body: body,
+      ContentType: mimeType,
     })
     .promise();
 
-  const link = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
-
-  return link;
-};
+  return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+}
