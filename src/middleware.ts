@@ -22,6 +22,7 @@ export const config = {
   matcher: [
     "/about-us/:path*",
     "/ai-assistant/:path*",
+    "/clients-dashboard",
     "/client-settings/:path*",
     "/clients/:path*",
     "/compliance/:path*",

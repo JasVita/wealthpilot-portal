@@ -13,6 +13,38 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { AlertCircleIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry, ColDef } from "ag-grid-community";
+import { themeQuartz } from "ag-grid-community";
+ModuleRegistry.registerModules([AllCommunityModule]);
+const myTheme = themeQuartz.withParams({
+  // spacing: 8,
+  // headerBackgroundColor: "#11223D",
+  // headerTextColor: "#FFFFFF",
+
+  accentColor: "#087AD1",
+  borderColor: "#D7E2E6",
+  browserColorScheme: "light",
+  cellHorizontalPaddingScale: 0.7,
+  columnBorder: false,
+  fontFamily: {
+    googleFont: "Inter",
+  },
+  fontSize: 14,
+  foregroundColor: "#555B62",
+  // headerBackgroundColor: "#11223D",
+  headerBackgroundColor: "#0f172b",
+  headerFontSize: 13,
+  headerFontWeight: 400,
+  headerTextColor: "#FFFFFF",
+  rowBorder: true,
+  rowVerticalPaddingScale: 0.8,
+  sidePanelBorder: true,
+  spacing: 8,
+  wrapperBorder: false,
+  // wrapperBorderRadius: 2,
+});
 
 /* ---------- helpers ---------- */
 const buildPdfSrc = (url: string) => {
@@ -78,7 +110,7 @@ function renderTableRoot(root: TableRoot | undefined, sectionTitle: string) {
 
 /* ---------- API‑level types (minimal; extend as required) ---------- */
 interface PortfolioDocument {
-  PK: string;
+  id: string;
   bankname: string;
   as_of_date: string;
   pdf_url: string;
@@ -131,6 +163,31 @@ export default function DocumentsMergedPage() {
     })();
   }, [currClient]);
 
+  const deleteDocument = async (docId: string) => {
+    if (!currClient) {
+      toast.error("No client selected.");
+      return;
+    }
+
+    // 1️⃣ optimistic update
+    const previous = docs;
+    setDocs((prev) => prev.filter((d) => d.id !== docId));
+
+    try {
+      // 2️⃣ hit the Flask route
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/delete_documents`, {
+        doc_ids: [docId],
+        client_id: currClient,
+      });
+
+      toast.success("Document queued for deletion.");
+      /* optional: poll /delete_documents/<task_id> here if you want progress */
+    } catch (err: any) {
+      setDocs(previous);
+      toast.error(err?.response?.data?.message || err?.message || "Delete failed.");
+    }
+  };
+
   /* --------------------------- render states ------------------------------ */
   if (status === "idle") return <></>;
 
@@ -165,80 +222,108 @@ export default function DocumentsMergedPage() {
       </p>
     );
 
-  const filtered = docs.filter((d) => d.tag.toLowerCase().includes(search.toLowerCase()));
+  const rows = docs
+    .filter((d) => d.tag.toLowerCase().includes(search.toLowerCase()))
+    .map((d) => ({
+      id: d.id,
+      bank: d.bankname,
+      date: fmtDate(d.as_of_date),
+      raw: d, // keep whole doc for the dialog
+    }));
+
+  const columnDefs: ColDef[] = [
+    { headerName: "Bank", field: "bank", flex: 2, sortable: true, floatingFilter: true, filter: true },
+    { headerName: "Date", field: "date", flex: 1, sortable: true },
+    {
+      headerName: "View",
+      field: "view",
+      cellRenderer: (p: { data: { raw: PortfolioDocument } }) => {
+        const doc: PortfolioDocument = p.data.raw;
+        return (
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="ghost" className="text-blue-600 hover:underline p-0 h-auto">
+                View
+              </Button>
+            </DialogTrigger>
+
+            {/* ------------ existing dialog body ------------- */}
+            <DialogContent2>
+              <Button
+                variant="outline"
+                size="lg"
+                className="gap-2 mb-4 w-1/3 mx-auto my-4"
+                onClick={() => doc.excel_url && window.open(doc.excel_url)}
+                disabled={!doc.excel_url}
+              >
+                <Download className="h-4 w-4" />
+                Download Excel
+              </Button>
+
+              <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
+                {/* PDF */}
+                <ResizablePanel defaultSize={50} minSize={30}>
+                  <div className="flex flex-col overflow-y-auto pr-2 h-full">
+                    <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
+                    {doc.pdf_url ? (
+                      <iframe
+                        src={buildPdfSrc(doc.pdf_url)}
+                        className="flex-1 w-full border-0 bg-white h-full"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
+                    )}
+                  </div>
+                </ResizablePanel>
+
+                <ResizableHandle withHandle />
+
+                {/* Tables */}
+                <ResizablePanel defaultSize={50} minSize={30}>
+                  <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
+                    {renderTableRoot(doc.assets, "Assets")}
+                    {renderTableRoot(doc.transactions, "Transactions")}
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </DialogContent2>
+          </Dialog>
+        );
+      },
+    },
+    {
+      headerName: "Delete",
+      field: "delete",
+      cellRenderer: (p: { data: { id: string } }) => (
+        <Button
+          variant="ghost"
+          className="text-red-600 hover:underline p-0 h-auto"
+          onClick={async () => {
+            if (confirm("Delete this document?")) deleteDocument(p.data.id);
+          }}
+        >
+          Delete
+        </Button>
+      ),
+    },
+  ];
 
   return (
-    <main className="p-6">
+    <main className="p-6 space-y-6">
       {/* quick search */}
-      <div className="mb-6 max-w-md">
-        <Input placeholder="Search by bank name…" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
+      {/* <Input
+        placeholder="Search by bank name…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-md"
+      /> */}
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="text-muted-foreground">No matching documents found.</p>
       ) : (
-        <div className="space-y-4">
-          {filtered.map((doc, idx) => (
-            <Dialog key={idx}>
-              {/* ───────── trigger row ───────── */}
-              <DialogTrigger asChild>
-                <Button variant="outline" className="w-full flex items-center gap-2 truncate">
-                  <FileText className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">
-                    {`${doc.bankname} (${fmtDate(doc.as_of_date)})` || `Document ${idx + 1}`}
-                  </span>
-                </Button>
-              </DialogTrigger>
-
-              {/* ───────── dialog content ───────── */}
-              <DialogContent2>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="gap-2 mb-4 w-1/3 mx-auto my-4"
-                  onClick={() => doc.excel_url && window.open(doc.excel_url)}
-                  disabled={!doc.excel_url}
-                >
-                  <Download className="h-4 w-4" />
-                  Download Excel
-                </Button>
-
-                <DialogHeader className="p-4 hidden">
-                  <DialogTitle className="truncate">{doc.bankname}</DialogTitle>
-                </DialogHeader>
-
-                {/* ───────── split view ───────── */}
-                <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
-                  {/* PDF Panel */}
-                  <ResizablePanel defaultSize={50} minSize={30}>
-                    <div className="flex flex-col overflow-y-auto pr-2 h-full">
-                      <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
-
-                      {doc.pdf_url ? (
-                        <iframe
-                          src={buildPdfSrc(doc.pdf_url)}
-                          className="flex-1 w-full border-0 bg-white h-full"
-                          allowFullScreen
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
-                      )}
-                    </div>
-                  </ResizablePanel>
-
-                  <ResizableHandle withHandle />
-
-                  {/* Table Panel */}
-                  <ResizablePanel defaultSize={50} minSize={30}>
-                    <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
-                      {renderTableRoot(doc.assets, "Assets")}
-                      {renderTableRoot(doc.transactions, "Transactions")}
-                    </div>
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              </DialogContent2>
-            </Dialog>
-          ))}
+        <div className="ag-theme-quartz w-full" style={{ maxHeight: 600 }}>
+          <AgGridReact rowData={rows} animateRows domLayout="autoHeight" theme={myTheme} columnDefs={columnDefs} />
         </div>
       )}
     </main>
