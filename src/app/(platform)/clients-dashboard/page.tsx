@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -127,7 +127,11 @@ export default function ClientManagementPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<NodeData | null>(null);
   const [form, setForm] = useState({ name: "", value: "" });
-  const { clients: storeClients, order, addClient, deleteClient, updateClient } = useClientStore();
+  const { clients: storeClients, order, addClient, deleteClient, updateClient, loadClients } = useClientStore();
+
+  useEffect(() => {
+    loadClients();
+  }, []);
 
   /* ---------------------- build tree from pieChartData --------------------- */
   const clients: NodeData[] = useMemo(() => {

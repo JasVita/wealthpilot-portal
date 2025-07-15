@@ -1,5 +1,5 @@
 "use client";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   Breadcrumb,
@@ -80,7 +80,6 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             toast.error("Upload failed – please try again.");
             setStatus("error");
           }
-          loadClients();
         }
       } catch {
         clearInterval(pollId);
@@ -111,6 +110,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       toast.error(err.message || "Upload failed, please try again later or contact us");
       setStatus("error");
       alert("Something went wrong during file processing.");
+    } finally {
+      loadClients();
     }
   };
 
