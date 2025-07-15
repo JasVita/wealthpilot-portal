@@ -34,7 +34,7 @@ import { useClientStore } from "@/stores/clients-store";
 import { useUserStore } from "@/stores/user-store";
 import { useUploadStore } from "@/stores/progress-store";
 import { toast } from "sonner";
-import { uploadFileAction } from "@/lib/uploadFile";
+import { uploadFileToS3 } from "@/lib/s3Upload";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -96,7 +96,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
     try {
       clearStorage();
-      const fileUrls = await Promise.all(files.map(uploadFileAction));
+      const fileUrls = await Promise.all(files.map(uploadFileToS3));
 
       const {
         data: { task1_idnew },
