@@ -56,10 +56,6 @@ const data = {
           title: "Transaction History",
           url: "/clients/transaction-history",
         },
-        // {
-        //   title: "Orders",
-        //   url: "/clients/orders",
-        // },
         {
           title: "Structured Products",
           url: "/clients/sp",
@@ -92,11 +88,11 @@ const data = {
       url: "/compliance",
       icon: ShieldCheck,
     },
-    {
-      title: "AI Assistant",
-      url: "/ai-assistant",
-      icon: Bot,
-    },
+    // {
+    //   title: "AI Assistant",
+    //   url: "/ai-assistant",
+    //   icon: Bot,
+    // },
     {
       title: "About Us",
       url: "/about-us",

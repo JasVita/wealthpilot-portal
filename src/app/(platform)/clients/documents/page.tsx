@@ -3,10 +3,9 @@
 
 import { Fragment, useEffect, useState } from "react";
 import axios from "axios";
-import { Dialog, DialogTrigger, DialogHeader, DialogTitle, DialogContent2 } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger, DialogContent2 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Download, FileText } from "lucide-react";
+import { Download } from "lucide-react";
 import { DataTable } from "./data-table";
 import { useClientStore } from "@/stores/clients-store";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";

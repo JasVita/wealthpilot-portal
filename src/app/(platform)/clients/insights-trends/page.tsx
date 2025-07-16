@@ -17,8 +17,6 @@ import {
 } from "lucide-react";
 
 import axios from "axios";
-import { AreaChart } from "@/components/ui/chart";
-import { getMockClientData } from "@/app/mockData";
 import type { AlertItem, NewsItem } from "@/types";
 import { useClientStore } from "@/stores/clients-store";
 
@@ -35,13 +33,6 @@ function toNumber(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
-const fmtCurrency = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 
 /* ─────────── Meta (unchanged) ─────────── */
 type AlertCategory =
@@ -90,9 +81,6 @@ const fallbackMeta = {
 
 /* ─────────── Component ─────────── */
 export default function Page() {
-  /* static (mock) cash-flow data for the chart */
-  const chartData = getMockClientData()?.cashFlow ?? [];
-
   /* ─ Local state ─ */
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);

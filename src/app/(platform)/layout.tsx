@@ -1,25 +1,14 @@
 "use client";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import FileUpload from "@/components/file-upload";
-// import { uploadFileToS3 } from "@/lib/s3Upload";
 import { useWealthStore } from "@/stores/wealth-store";
-import { useDocStore } from "@/stores/doc-store";
 import axios from "axios";
-import { BankEntry, BankTableKey, BankTables, UploadBatch } from "@/types";
 import {
   Select,
   SelectContent,
@@ -32,7 +21,6 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useClientStore } from "@/stores/clients-store";
 import { useUserStore } from "@/stores/user-store";
-import { useUploadStore } from "@/stores/progress-store";
 import { toast } from "sonner";
 import { uploadFileToS3 } from "@/lib/s3Upload";
 
@@ -40,8 +28,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
-  const { setPieDataSets, setTableDataArray, setDownloadURL, setTask2ID, clearStorage, addUploadBatch } =
-    useWealthStore();
+  const { clearStorage } = useWealthStore();
   const { clients, order, currClient, setCurrClient, loadClients } = useClientStore();
   const { id: user_id } = useUserStore();
   const [progress, setProgress] = useState<{
