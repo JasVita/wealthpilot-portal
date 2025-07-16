@@ -124,6 +124,7 @@ function TreeNode({
 /* -------------------------------------------------------------------------- */
 
 export default function ClientManagementPage() {
+  const [pendingDelete, setPendingDelete] = useState<NodeData | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<NodeData | null>(null);
   const [form, setForm] = useState({ name: "", value: "" });
@@ -199,16 +200,17 @@ export default function ClientManagementPage() {
     setDialogOpen(false);
   };
 
-  const handleDelete = async (n: NodeData) => {
-    if (confirm(`Delete ${n.name}?`)) {
-      try {
-        await deleteClient(n.id);
-        toast.success("Client deleted 🗑️");
-      } catch (err: any) {
-        toast.error(err.message || "Delete failed");
-      }
-    }
-  };
+  // const handleDelete = async (n: NodeData) => {
+  //   if (confirm(`Delete ${n.name}?`)) {
+  //     try {
+  //       await deleteClient(n.id);
+  //       toast.success("Client deleted 🗑️");
+  //     } catch (err: any) {
+  //       toast.error(err.message || "Delete failed");
+  //     }
+  //   }
+  // };
+  const handleDelete = (n: NodeData) => setPendingDelete(n);
 
   /* -------------------------------- Render -------------------------------- */
   return (
@@ -249,6 +251,40 @@ export default function ClientManagementPage() {
               Cancel
             </Button>
             <Button onClick={handleSave}>{editing ? "Save" : "Create"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete client?</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            You’re about to permanently remove &nbsp;<strong>{pendingDelete?.name}</strong>. This action can’t be
+            undone.
+          </p>
+
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!pendingDelete) return;
+                try {
+                  await deleteClient(pendingDelete.id);
+                  toast.success("Client deleted 🗑️");
+                } catch (err: any) {
+                  toast.error(err.message || "Delete failed");
+                } finally {
+                  setPendingDelete(null);
+                }
+              }}
+            >
+              Delete
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
