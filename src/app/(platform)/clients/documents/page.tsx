@@ -1,21 +1,22 @@
 /* ─────────────────── /documents/page.tsx ─────────────────── */
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
-import { Dialog, DialogTrigger, DialogContent2 } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger, DialogContent2, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, Eye, Pencil, Trash2, AlertCircleIcon, Loader2 } from "lucide-react";
 import { DataTable } from "./data-table";
 import { useClientStore } from "@/stores/clients-store";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { AlertCircleIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, ColDef } from "ag-grid-community";
 import { themeQuartz } from "ag-grid-community";
+import { Description, DialogTitle } from "@radix-ui/react-dialog";
+
 ModuleRegistry.registerModules([AllCommunityModule]);
 const myTheme = themeQuartz.withParams({
   // spacing: 8,
@@ -66,6 +67,104 @@ function applyColumnOrder<T extends Record<string, unknown>>(rows: T[], columnOr
 }
 
 const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+
+function DeleteButton({ doc, onDelete }: { doc: PortfolioDocument; onDelete: (d: PortfolioDocument) => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button variant="ghost" size="icon" className="text-red-600" onClick={() => setOpen(true)}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        {/* hidden trigger so Dialog works when we toggle `open` imperatively */}
+        <DialogTrigger asChild />
+
+        <DialogContent className="sm:max-w-lg">
+          <DialogTitle className="hidden"></DialogTitle>
+          <Description className="hidden"></Description>
+          <h3 className="text-lg font-semibold mb-2">Delete this document?</h3>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            You’re about to permanently remove the&nbsp;
+            <strong>{doc.bankname}</strong> statement dated&nbsp;
+            <strong>{fmtDate(doc.as_of_date)}</strong>. <br />
+            This action can’t be undone. Portfolio insights &amp; trend charts will be rebuilt in the background and may
+            be unavailable for up to a minute.
+          </p>
+
+          <div className="flex justify-end gap-2 pt-6">
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setOpen(false);
+                onDelete(doc);
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function useDeletePoller() {
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startPolling = useCallback((taskId: string, toastId: string | number, restore: () => void) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        /* always resolve so we can read status even on 500 */
+        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/delete_documents/${taskId}`, {
+          validateStatus: () => true,
+        });
+        console.log("Poll delete status:", JSON.stringify(res, null, 2));
+
+        /* ----- 1️⃣ stop as soon as status ≠ 202 ----- */
+        if (res.status !== 202) {
+          toast.dismiss(toastId);
+
+          if (res.status === 200) {
+            toast.success("Document deleted successfully.");
+          } else {
+            // 500 or anything else
+            const errMsg = res.data?.error || res.statusText || "Server error";
+            toast.error(`Delete failed: ${errMsg}`);
+            restore(); // put the doc back
+          }
+
+          clearInterval(pollRef.current!);
+          return;
+        }
+
+        /* ----- 2️⃣ still 202 → optional progress UI ----- */
+        // you can surface PROGRESS meta here if desired
+        // const { state, deleted, dates } = res.data;
+      } catch {
+        /* network hiccup – ignore and keep polling */
+      }
+    }, 10_000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  return startPolling;
+}
+
+const saveChanges = (doc: PortfolioDocument) => {
+  toast.success(`(mock) saved changes for ${doc.bankname}`);
+};
 
 /* ---------- (generic) renderer for 2‑level table hierarchies ---------- */
 type TableBlock = { columnOrder: string[]; rows: Record<string, unknown>[] };
@@ -126,6 +225,7 @@ interface PortfolioDocument {
 export default function DocumentsMergedPage() {
   const [search, setSearch] = useState("");
   const { currClient } = useClientStore();
+  const pollDeletion = useDeletePoller();
 
   const [docs, setDocs] = useState<PortfolioDocument[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
@@ -149,6 +249,7 @@ export default function DocumentsMergedPage() {
         }>(`${process.env.NEXT_PUBLIC_API_URL}/documents`, {
           client_id: currClient,
         });
+        // console.log("Fetched documents:", JSON.stringify(data, null, 2));
 
         if (data.status !== "ok") throw new Error(data.message);
         setDocs(
@@ -165,30 +266,129 @@ export default function DocumentsMergedPage() {
     })();
   }, [currClient]);
 
-  const deleteDocument = async (docId: string) => {
+  const deleteDocument = async (doc: PortfolioDocument) => {
     if (!currClient) {
       toast.error("No client selected.");
       return;
     }
 
-    // 1️⃣ optimistic update
-    const previous = docs;
-    setDocs((prev) => prev.filter((d) => d.id !== docId));
+    /* 1️⃣ optimistic UI removal */
+    const previousDocs = docs;
+    setDocs((prev) => prev.filter((d) => d.id !== doc.id));
+
+    /* 2️⃣ spinning toast that stays until we dismiss it manually */
+    const toastId = toast("Deleting document…", {
+      duration: Infinity,
+      icon: <Loader2 className="animate-spin" />,
+    });
 
     try {
-      // 2️⃣ hit the Flask route
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/delete_documents`, {
-        doc_ids: [docId],
+      const { data } = await axios.post<{
+        task_id: string;
+      }>(`${process.env.NEXT_PUBLIC_API_URL}/delete_documents`, {
+        doc_ids: [doc.id],
         client_id: currClient,
       });
 
-      toast.success("Document queued for deletion.");
-      /* optional: poll /delete_documents/<task_id> here if you want progress */
+      const taskId = data.task_id;
+      pollDeletion(taskId, toastId, () => setDocs(previousDocs)); // start polling
     } catch (err: any) {
-      setDocs(previous);
+      toast.dismiss(toastId);
+      setDocs(previousDocs);
       toast.error(err?.response?.data?.message || err?.message || "Delete failed.");
     }
   };
+
+  function DocDialog({ doc, mode }: { doc: PortfolioDocument; mode: "view" | "edit" }) {
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon">
+            {mode === "view" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+          </Button>
+        </DialogTrigger>
+
+        <DialogContent2>
+          <DialogTitle className="hidden"></DialogTitle>
+          <Description className="hidden"></Description>
+          {mode === "view" ? (
+            <Button
+              size="lg"
+              className="gap-2 mb-4 w-1/3 mx-auto my-4"
+              onClick={() => doc.excel_url && window.open(doc.excel_url)}
+              disabled={!doc.excel_url}
+            >
+              <Download className="h-4 w-4" />
+              Download Excel
+            </Button>
+          ) : (
+            <Button size="lg" className="gap-2 mb-4 w-1/3 mx-auto my-4" onClick={() => saveChanges(doc)}>
+              <Download className="h-4 w-4 rotate-90" />
+              Save changes
+            </Button>
+          )}
+
+          <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
+            {/* PDF */}
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="flex flex-col overflow-y-auto pr-2 h-full">
+                <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
+                {doc.pdf_url ? (
+                  <iframe
+                    src={buildPdfSrc(doc.pdf_url)}
+                    className="flex-1 w-full border-0 bg-white h-full"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
+                )}
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* Tables */}
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
+                {renderTableRoot(doc.assets, "Assets")}
+                {renderTableRoot(doc.transactions, "Transactions")}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </DialogContent2>
+      </Dialog>
+    );
+  }
+
+  const rows = docs
+    .filter((d) => d.tag.toLowerCase().includes(search.toLowerCase()))
+    .map((d) => ({
+      id: d.id,
+      bank: d.bankname,
+      date: fmtDate(d.as_of_date),
+      raw: d, // keep whole doc for the dialog
+    }));
+
+  const columnDefs: ColDef[] = [
+    { headerName: "Bank", field: "bank", flex: 2, sortable: true, floatingFilter: true, filter: true },
+    { headerName: "Date", field: "date", flex: 1, sortable: true },
+    {
+      headerName: "Actions",
+      field: "actions",
+      type: "numericColumn",
+      cellRenderer: (p: { data: { raw: PortfolioDocument } }) => {
+        const doc = p.data.raw;
+        return (
+          <div className="flex gap-2">
+            <DocDialog doc={doc} mode="view" />
+            <DocDialog doc={doc} mode="edit" />
+            <DeleteButton doc={doc} onDelete={deleteDocument} />
+          </div>
+        );
+      },
+      cellStyle: { display: "flex", justifyContent: "end" },
+    },
+  ];
 
   /* --------------------------- render states ------------------------------ */
   if (status === "idle") return <></>;
@@ -224,103 +424,8 @@ export default function DocumentsMergedPage() {
       </p>
     );
 
-  const rows = docs
-    .filter((d) => d.tag.toLowerCase().includes(search.toLowerCase()))
-    .map((d) => ({
-      id: d.id,
-      bank: d.bankname,
-      date: fmtDate(d.as_of_date),
-      raw: d, // keep whole doc for the dialog
-    }));
-
-  const columnDefs: ColDef[] = [
-    { headerName: "Bank", field: "bank", flex: 2, sortable: true, floatingFilter: true, filter: true },
-    { headerName: "Date", field: "date", flex: 1, sortable: true },
-    {
-      headerName: "View",
-      field: "view",
-      cellRenderer: (p: { data: { raw: PortfolioDocument } }) => {
-        const doc: PortfolioDocument = p.data.raw;
-        return (
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="ghost" className="text-blue-600 hover:underline p-0 h-auto">
-                View
-              </Button>
-            </DialogTrigger>
-
-            {/* ------------ existing dialog body ------------- */}
-            <DialogContent2>
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2 mb-4 w-1/3 mx-auto my-4"
-                onClick={() => doc.excel_url && window.open(doc.excel_url)}
-                disabled={!doc.excel_url}
-              >
-                <Download className="h-4 w-4" />
-                Download Excel
-              </Button>
-
-              <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
-                {/* PDF */}
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="flex flex-col overflow-y-auto pr-2 h-full">
-                    <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
-                    {doc.pdf_url ? (
-                      <iframe
-                        src={buildPdfSrc(doc.pdf_url)}
-                        className="flex-1 w-full border-0 bg-white h-full"
-                        allowFullScreen
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
-                    )}
-                  </div>
-                </ResizablePanel>
-
-                <ResizableHandle withHandle />
-
-                {/* Tables */}
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
-                    {renderTableRoot(doc.assets, "Assets")}
-                    {renderTableRoot(doc.transactions, "Transactions")}
-                  </div>
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </DialogContent2>
-          </Dialog>
-        );
-      },
-    },
-    {
-      headerName: "Delete",
-      field: "delete",
-      cellRenderer: (p: { data: { id: string } }) => (
-        <Button
-          variant="ghost"
-          className="text-red-600 hover:underline p-0 h-auto"
-          onClick={async () => {
-            if (confirm("Delete this document?")) deleteDocument(p.data.id);
-          }}
-        >
-          Delete
-        </Button>
-      ),
-    },
-  ];
-
   return (
     <main className="p-6 space-y-6">
-      {/* quick search */}
-      {/* <Input
-        placeholder="Search by bank name…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-md"
-      /> */}
-
       {rows.length === 0 ? (
         <p className="text-muted-foreground">No matching documents found.</p>
       ) : (
