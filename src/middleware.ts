@@ -9,7 +9,7 @@ export async function middleware(req: NextRequest) {
   const isLogin = req.nextUrl.pathname.startsWith("/login");
 
   if (user && isLogin) {
-    return NextResponse.redirect(new URL("/clients", req.url));
+    return NextResponse.redirect(new URL("/clients-dashboard", req.url));
   }
   if (!user && !isLogin) {
     return NextResponse.redirect(new URL("/login", req.url));
@@ -34,5 +34,6 @@ export const config = {
     "/settings/:path*",
     "/sp-lifecycle/:path*",
     "/trade-retrocesson/:path*",
+    "/login",
   ],
 };

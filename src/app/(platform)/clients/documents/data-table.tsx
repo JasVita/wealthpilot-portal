@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useImperativeHandle, forwardRef, MutableRefObject } from "react";
 import { AllCommunityModule, ModuleRegistry, ColDef, ValueFormatterParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { themeQuartz } from "ag-grid-community";
@@ -20,11 +20,15 @@ interface DataTableProps {
   /** maximum height before we start vertical scrolling (default = 600 px) */
   maxHeight?: number;
 }
+export interface DataTableHandle {
+  /** returns the grid’s current rows as plain objects */
+  getRows: () => any[];
+}
 
 /** crude text-to-pixels helper (≈8 px per char + 24 px padding) */
 const minWidthForHeader = (label: string) => Math.max(label.length * 8 + 60, 80); // never smaller than 80 px
 
-export const DataTable = ({ title, rows, maxHeight = 600 }: DataTableProps) => {
+export const DataTable = forwardRef<DataTableHandle, DataTableProps>(({ title, rows, maxHeight = 600 }, ref) => {
   const safeRows: Record<string, unknown>[] = Array.isArray(rows) ? rows : [];
   const rowData = useMemo(() => safeRows, [safeRows]);
 
@@ -54,6 +58,17 @@ export const DataTable = ({ title, rows, maxHeight = 600 }: DataTableProps) => {
     });
   }, [rowData]);
 
+  const gridApi = useRef<import("ag-grid-community").GridApi | null>(null);
+
+  // let parent access rows
+  useImperativeHandle(ref, () => ({
+    getRows: () => {
+      const out: any[] = [];
+      gridApi.current?.forEachNode((n) => out.push(n.data));
+      return out;
+    },
+  }));
+
   if (!rowData.length) return null;
 
   return (
@@ -72,4 +87,5 @@ export const DataTable = ({ title, rows, maxHeight = 600 }: DataTableProps) => {
       </div>
     </section>
   );
-};
+});
+DataTable.displayName = "DataTable";
