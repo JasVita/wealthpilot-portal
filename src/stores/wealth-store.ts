@@ -82,7 +82,7 @@ export const useWealthStore = create<WealthState>()(
         });
 
         try {
-          const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/msg`, { user_input: input });
+          const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/bankdemo/msg`, { user_input: input });
           const aiResponse: Message = {
             content: response.data.result.response || "server error",
             isUser: false,
