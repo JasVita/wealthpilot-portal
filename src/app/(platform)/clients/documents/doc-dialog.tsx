@@ -1,4 +1,4 @@
-import { Fragment, useState, useCallback } from "react";
+import { Fragment, useState, useCallback, useRef } from "react";
 import { Dialog, DialogContent2, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import type { Doc } from "./page";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { DataTable } from "./data-table";
 import { EditableDataTable } from "./editable-data-table";
 import { useClientStore } from "@/stores/clients-store";
+import type { GridApi } from "ag-grid-community";
 import axios from "axios";
 
 type TableBlock = { columnOrder: string[]; rows: Record<string, unknown>[] };
@@ -41,8 +42,20 @@ export default function DocDialog({
   onDocumentUpdate?: (docId: string, updatedDoc: Partial<Doc>) => void;
   onRefreshDocuments?: () => void;
 }) {
+  const pristineRef = useRef({
+    assets: structuredClone(doc.assets), // deep‑clone once
+    transactions: structuredClone(doc.transactions),
+  });
+
+  const gridApisRef = useRef<GridApi[]>([]); // will hold every table’s api
+  const registerGridApi = useCallback((api: GridApi) => {
+    // avoid duplicates if the component remounts
+    if (!gridApisRef.current.includes(api)) gridApisRef.current.push(api);
+  }, []);
+
   const { currClient } = useClientStore();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  // const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editedData, setEditedData] = useState<{
     assets: any;
@@ -125,7 +138,6 @@ export default function DocDialog({
 
             if (res.status === 200) {
               toast.success("Document updated successfully.");
-              setIsDialogOpen(false);
 
               // Update the document data
               if (onDocumentUpdate) {
@@ -154,29 +166,6 @@ export default function DocDialog({
       toast.error(err?.response?.data?.message || err?.message || "Update failed.");
     }
   };
-
-  // Fixed: Properly handle dialog state changes
-  const handleDialogOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open && mode === "edit") {
-        // Reset edited data when closing in edit mode
-        setEditedData({
-          assets: doc.assets,
-          transactions: doc.transactions,
-        });
-      }
-      setIsDialogOpen(open);
-      console.log("some bullshit clicked");
-    },
-    [mode, doc.assets, doc.transactions]
-  );
-
-  // Fixed: Remove the manual onClick handler since DialogTrigger handles this
-  const handleTriggerClick = useCallback(() => {
-    // This will be handled by DialogTrigger automatically
-    // No need to manually set dialog state here
-    console.log("DialogTrigger clicked");
-  }, []);
 
   function renderTableRoot(root: TableRoot | undefined, sectionTitle: string, section: "assets" | "transactions") {
     if (!root?.tableOrder?.length) return null;
@@ -208,6 +197,7 @@ export default function DocDialog({
                         title={subKey.replace(/_/g, " ")}
                         rows={rows}
                         onDataChange={(newRows) => handleTableDataChange(section, catKey, subKey, newRows)}
+                        onApiReady={registerGridApi}
                       />
                     );
                   } else {
@@ -230,6 +220,7 @@ export default function DocDialog({
                   title={catKey.replace(/_/g, " ")}
                   rows={rows}
                   onDataChange={(newRows) => handleTableDataChange(section, catKey, null, newRows)}
+                  onApiReady={registerGridApi}
                 />
               );
             } else {
@@ -243,9 +234,20 @@ export default function DocDialog({
   }
 
   return (
-    <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        setOpen(isOpen); // keep the UI in sync
+        if (!isOpen) {
+          console.log("closed dialog");
+          setEditedData(structuredClone(pristineRef.current));
+
+          gridApisRef.current.forEach((api) => api.refreshCells({ force: true, suppressFlash: true }));
+        }
+      }}
+    >
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={handleTriggerClick}>
+        <Button variant="ghost" size="icon">
           {mode === "view" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
         </Button>
       </DialogTrigger>

@@ -7,6 +7,7 @@ import {
   themeQuartz,
   GridReadyEvent,
   CellValueChangedEvent,
+  GridApi,
 } from "ag-grid-community";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2 } from "lucide-react";
@@ -24,9 +25,10 @@ interface EditableDataTableProps {
   rows: Record<string, unknown>[];
   onDataChange: (newRows: Record<string, unknown>[]) => void;
   onRevert?: () => void; // Add this prop
+  onApiReady?: (api: GridApi) => void;
 }
 
-export function EditableDataTable({ title, rows, onDataChange, onRevert }: EditableDataTableProps) {
+export function EditableDataTable({ title, rows, onDataChange, onRevert, onApiReady }: EditableDataTableProps) {
   const [gridApi, setGridApi] = useState<any>(null);
   const [currentRows, setCurrentRows] = useState<Record<string, unknown>[]>(rows);
   const originalRowsRef = useRef<Record<string, unknown>[]>(rows);
@@ -36,37 +38,9 @@ export function EditableDataTable({ title, rows, onDataChange, onRevert }: Edita
     originalRowsRef.current = JSON.parse(JSON.stringify(rows));
   }, [rows]);
 
-  const revertToOriginal = useCallback(() => {
-    if (gridApi && originalRowsRef.current) {
-      const originalData = JSON.parse(JSON.stringify(originalRowsRef.current));
-      setCurrentRows(originalData);
-      gridApi.setRowData(originalData);
-      onDataChange(originalData);
-    }
-  }, [gridApi, onDataChange]);
-
-  useEffect(() => {
-    if (onRevert) {
-      // You could use a ref callback or imperative handle here
-      // For now, we'll handle it through the parent component
-    }
-  }, [onRevert]);
-
-  const hasChanges = useCallback(() => {
-    return JSON.stringify(currentRows) !== JSON.stringify(originalRowsRef.current);
-  }, [currentRows]);
-
-  useImperativeHandle(
-    onRevert,
-    () => ({
-      revert: revertToOriginal,
-      hasChanges: hasChanges,
-    }),
-    [revertToOriginal, hasChanges]
-  );
-
   const onGridReady = useCallback((params: GridReadyEvent) => {
     setGridApi(params.api);
+    onApiReady?.(params.api);
   }, []);
 
   const onCellValueChanged = useCallback(
