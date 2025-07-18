@@ -10,6 +10,16 @@ import { EditableDataTable } from "./editable-data-table";
 import { useClientStore } from "@/stores/clients-store";
 import type { GridApi } from "ag-grid-community";
 import axios from "axios";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type TableBlock = { columnOrder: string[]; rows: Record<string, unknown>[] };
 type SubTableGroup = { subTableOrder: string[] } & Record<string, TableBlock>;
@@ -54,7 +64,7 @@ export default function DocDialog({
   }, []);
 
   const { currClient } = useClientStore();
-  // const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editedData, setEditedData] = useState<{
@@ -96,6 +106,42 @@ export default function DocDialog({
       });
     },
     []
+  );
+
+  const hasUnsavedChanges = useCallback(() => {
+    if (mode === "view") return false;
+
+    return (
+      JSON.stringify(editedData) !==
+      JSON.stringify({
+        assets: pristineRef.current.assets,
+        transactions: pristineRef.current.transactions,
+      })
+    );
+  }, [editedData, mode]);
+
+  // Handle the actual closing logic
+  const handleClose = useCallback(() => {
+    setOpen(false);
+    setEditedData(structuredClone(pristineRef.current));
+    gridApisRef.current.forEach((api) => api.refreshCells({ force: true, suppressFlash: true }));
+  }, []);
+
+  // Handle dialog close attempt
+  const handleOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen) {
+        setOpen(true);
+      } else {
+        // If closing and has unsaved changes, show confirmation
+        if (hasUnsavedChanges()) {
+          setShowConfirmDialog(true);
+        } else {
+          handleClose();
+        }
+      }
+    },
+    [hasUnsavedChanges, handleClose]
   );
 
   const saveChanges = async () => {
@@ -234,72 +280,98 @@ export default function DocDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(isOpen) => {
-        setOpen(isOpen); // keep the UI in sync
-        if (!isOpen) {
-          console.log("closed dialog");
-          setEditedData(structuredClone(pristineRef.current));
+    <>
+      <Dialog
+        // open={open}
+        // onOpenChange={(isOpen) => {
+        //   setOpen(isOpen); // keep the UI in sync
+        //   if (!isOpen) {
+        //     console.log("closed dialog");
+        //     setEditedData(structuredClone(pristineRef.current));
 
-          gridApisRef.current.forEach((api) => api.refreshCells({ force: true, suppressFlash: true }));
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon">
-          {mode === "view" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent2>
-        <DialogTitle className="hidden"></DialogTitle>
-        <DialogDescription className="hidden"></DialogDescription>
-        {mode === "view" ? (
-          <Button
-            size="lg"
-            className="gap-2 mb-4 w-1/3 mx-auto my-4"
-            onClick={() => doc.excel_url && window.open(doc.excel_url)}
-            disabled={!doc.excel_url}
-          >
-            <Download className="h-4 w-4" />
-            Download Excel
+        //     gridApisRef.current.forEach((api) => api.refreshCells({ force: true, suppressFlash: true }));
+        //   }
+        // }}
+        open={open}
+        onOpenChange={handleOpenChange}
+      >
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon">
+            {mode === "view" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </Button>
-        ) : (
-          <Button size="lg" className="gap-2 mb-4 w-1/3 mx-auto my-4" onClick={saveChanges} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 rotate-90" />}
-            {isSaving ? "Saving..." : "Save changes"}
-          </Button>
-        )}
+        </DialogTrigger>
 
-        <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
-          {/* PDF */}
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <div className="flex flex-col overflow-y-auto pr-2 h-full">
-              <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
-              {doc.pdf_url ? (
-                <iframe
-                  src={buildPdfSrc(doc.pdf_url)}
-                  className="flex-1 w-full border-0 bg-white h-full"
-                  allowFullScreen
-                />
-              ) : (
-                <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
-              )}
-            </div>
-          </ResizablePanel>
+        <DialogContent2>
+          <DialogTitle className="hidden"></DialogTitle>
+          <DialogDescription className="hidden"></DialogDescription>
+          {mode === "view" ? (
+            <Button
+              size="lg"
+              className="gap-2 mb-4 w-1/3 mx-auto my-4"
+              onClick={() => doc.excel_url && window.open(doc.excel_url)}
+              disabled={!doc.excel_url}
+            >
+              <Download className="h-4 w-4" />
+              Download Excel
+            </Button>
+          ) : (
+            <Button size="lg" className="gap-2 mb-4 w-1/3 mx-auto my-4" onClick={saveChanges} disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 rotate-90" />}
+              {isSaving ? "Saving..." : "Save changes"}
+            </Button>
+          )}
 
-          <ResizableHandle withHandle />
+          <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
+            {/* PDF */}
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="flex flex-col overflow-y-auto pr-2 h-full">
+                <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
+                {doc.pdf_url ? (
+                  <iframe
+                    src={buildPdfSrc(doc.pdf_url)}
+                    className="flex-1 w-full border-0 bg-white h-full"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
+                )}
+              </div>
+            </ResizablePanel>
 
-          {/* Tables */}
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
-              {renderTableRoot(doc.assets, "Assets", "assets")}
-              {renderTableRoot(doc.transactions, "Transactions", "transactions")}
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </DialogContent2>
-    </Dialog>
+            <ResizableHandle withHandle />
+
+            {/* Tables */}
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
+                {renderTableRoot(doc.assets, "Assets", "assets")}
+                {renderTableRoot(doc.transactions, "Transactions", "transactions")}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </DialogContent2>
+      </Dialog>
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes that will be lost if you close this dialog. Are you sure you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowConfirmDialog(false);
+                handleClose();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
