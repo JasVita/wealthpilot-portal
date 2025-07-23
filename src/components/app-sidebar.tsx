@@ -14,6 +14,7 @@ import {
   Files,
   ShieldCheck,
   UserCog,
+  LineChart,
 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
@@ -77,6 +78,11 @@ const data = {
           url: "/clients/settings",
         },
       ],
+    },
+    {
+      title: "Insights",
+      url: "/insights",
+      icon: LineChart,
     },
     {
       title: "Trade Retrocession",

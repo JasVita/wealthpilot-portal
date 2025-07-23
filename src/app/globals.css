@@ -8,23 +8,14 @@ body {
   max-width: 100vw;
   overflow-x: hidden;
 }
-
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-
-/* * {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-} */
-
 a {
   color: inherit;
   text-decoration: none;
 }
-
 @media (prefers-color-scheme: dark) {
   html {
     color-scheme: dark;
@@ -102,6 +93,15 @@ a {
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+
+  --positive: 142 76% 36%;
+  --positive-foreground: 0 0% 100%;
+  --negative: 0 72% 51%;
+  --negative-foreground: 0 0% 100%;
+  --neutral: 43 74% 49%;
+  --neutral-foreground: 0 0% 100%;
+  --info: 221 83% 53%;
+  --info-foreground: 0 0% 100%;
 }
 
 .dark {
@@ -136,6 +136,68 @@ a {
   --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.551 0.027 264.364);
+}
+
+/* @layer utilities {
+  .bg-positive {
+    background-color: hsl(var(--positive));
+  }
+  .text-positive-foreground {
+    color: hsl(var(--positive-foreground));
+  }
+
+  .bg-negative {
+    background-color: hsl(var(--negative));
+  }
+  .text-negative-foreground {
+    color: hsl(var(--negative-foreground));
+  }
+
+  .bg-neutral {
+    background-color: hsl(var(--neutral));
+  }
+  .text-neutral-foreground {
+    color: hsl(var(--neutral-foreground));
+  }
+
+  .bg-info {
+    background-color: hsl(var(--info));
+  }
+  .text-info-foreground {
+    color: hsl(var(--info-foreground));
+  }
+} */
+
+@layer utilities {
+  .text-positive {
+    color: hsl(var(--positive));
+  }
+  .border-l-positive {
+    border-left-color: hsl(var(--positive));
+  }
+  .bg-positive {
+    background-color: hsl(var(--positive));
+  }
+
+  .text-negative {
+    color: hsl(var(--negative));
+  }
+  .border-l-negative {
+    border-left-color: hsl(var(--negative));
+  }
+  .bg-negative {
+    background-color: hsl(var(--negative));
+  }
+
+  .text-neutral {
+    color: hsl(var(--neutral));
+  }
+  .border-l-neutral {
+    border-left-color: hsl(var(--neutral));
+  }
+  .bg-neutral {
+    background-color: hsl(var(--neutral));
+  }
 }
 
 @layer base {
