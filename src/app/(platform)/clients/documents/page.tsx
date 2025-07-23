@@ -25,7 +25,7 @@ export interface Doc {
   transactions?: any;
 }
 
-export const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
 export default function Page() {
   const { currClient } = useClientStore();

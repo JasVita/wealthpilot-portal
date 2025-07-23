@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Loader2, Trash2 } from "lucide-react";
 import type { Doc } from "./page";
-import { fmtDate } from "./page";
 import { useClientStore } from "@/stores/clients-store";
 import { toast } from "sonner";
 import axios from "axios";
+
+const fmtDate = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
 export default function DeleteButton({ doc, docs, setDocs }: { doc: Doc; docs: Doc[]; setDocs: any }) {
   const [open, setOpen] = useState(false);
