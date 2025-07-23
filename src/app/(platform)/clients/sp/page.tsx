@@ -1,396 +1,365 @@
 "use client";
-import { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+} from "recharts";
+import { useClientStore } from "@/stores/clients-store";
 import { Button } from "@/components/ui/button";
-import UserHeader from "@/components/sp/user-header";
-import InfoCards from "@/components/sp/info-cards";
-import ProductsTable from "@/components/sp/products-table";
-import MaturityChart from "@/components/sp/maturity-card";
-import CounterpartyRiskChart from "@/components/sp/risk-chart";
-import ProductDrawer from "@/components/sp/product-drawer";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry, ColDef, themeQuartz } from "ag-grid-community";
+ModuleRegistry.registerModules([AllCommunityModule]);
 
-interface Product {
+/**
+ * Structured Products Page
+ * -------------------------------------------------------
+ * 1. Fetches all documents for the selected client (currClient)
+ * 2. Extracts every sub‑table whose key contains "product" from the `assets` JSON
+ * 3. Displays:
+ *    – Maturity Ladder (BarChart)
+ *    – Counterparty Risk (PieChart)
+ *    – AG‑Grid table of raw structured‑product rows
+ *
+ * The helper functions at the bottom (buildMaturityChartData & buildCounterpartyRiskData)
+ * convert the flattened rows → chart‑ready series. Feel free to swap them out if your
+ * DB schema evolves – everything else should Just Work™.
+ * -------------------------------------------------------
+ */
+
+/* -------------------------------------------------------------------------- */
+/*                               Type helpers                                 */
+/* -------------------------------------------------------------------------- */
+
+type Doc = {
   id: string;
-  bank: string;
-  isin: string;
-  productName: string;
-  productType: string;
-  notional: string;
-  marketValue: string;
-  portfolioPercent: string;
-  issueDate: string;
-  maturity: string;
-  strike: string;
-  unrealizedPL: string;
-  unrealizedPLColor: "positive" | "negative";
-}
+  bankname: string;
+  as_of_date: string;
+  pdf_url: string;
+  excel_url: string;
+  assets?: Record<string, any>;
+};
 
-const Index = () => {
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+type ProductRow = Record<string, any> & {
+  /** convenience fields injected by extract step */
+  issuing_bank?: string;
+  doc_id?: string;
+};
 
-  const handleRowClick = (product: Product) => {
-    setSelectedProduct(product);
-    setIsDrawerOpen(true);
-  };
+/* -------------------------------------------------------------------------- */
+/*                                 Constants                                  */
+/* -------------------------------------------------------------------------- */
 
-  const closeDrawer = () => {
-    setIsDrawerOpen(false);
-    setSelectedProduct(null);
-  };
+const CHART_COLORS = [
+  "#0CA3A3",
+  "#11223D",
+  "#8B5CF6",
+  "#F59E0B",
+  "#EF4444",
+  "#14B8A6",
+  "#C026D3",
+  "#6366F1",
+  "#4ADE80",
+];
 
+/* -------------------------------------------------------------------------- */
+/*                                Components                                  */
+/* -------------------------------------------------------------------------- */
+
+const StructuredProductsPage = () => {
+  /* -------------- 1️⃣  Global client selection (Zustand store) -------------- */
+  const { currClient } = useClientStore();
+
+  /* ----------------------------- Local state ------------------------------ */
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [selectedRow, setSelectedRow] = useState<ProductRow | null>(null);
+
+  /* ----------------------- 2️⃣  Fetch documents once ----------------------- */
+  useEffect(() => {
+    if (!currClient) {
+      setDocs([]);
+      setStatus("idle");
+      return;
+    }
+
+    (async () => {
+      try {
+        setStatus("loading");
+        const { data } = await axios.post<{
+          status: string;
+          documents: Doc[];
+          message: string;
+        }>(`${process.env.NEXT_PUBLIC_API_URL}/documents`, { client_id: currClient });
+
+        if (data.status !== "ok") throw new Error(data.message);
+        setDocs(data.documents ?? []);
+        setStatus("ready");
+      } catch (err: any) {
+        setErrorMsg(err?.response?.data?.message || err?.message || "Unknown error");
+        setStatus("error");
+      }
+    })();
+  }, [currClient]);
+
+  /* ------------------ 3️⃣  Flatten every *product* sub‑table ----------------- */
+  const productRows: ProductRow[] = useMemo(() => {
+    const rows: ProductRow[] = [];
+
+    docs.forEach((doc) => {
+      const { assets } = doc;
+      if (!assets) return;
+
+      Object.entries(assets).forEach(([key, value]) => {
+        if (!key.toLowerCase().includes("product")) return; // skip non‑product tables
+
+        const tableMeta: any = value;
+        // Most tables expose a `subTableOrder` → grab the first sub‑table
+        const subName: string | undefined = tableMeta.subTableOrder?.[0];
+        const subTableRows: any[] = subName ? tableMeta[subName]?.rows ?? [] : [];
+
+        subTableRows.forEach((r) => {
+          rows.push({
+            ...r,
+            issuing_bank: r.security_description?.split(" ")[0] ?? "Unknown", // crude parsing → works for most
+            doc_id: doc.id,
+          });
+        });
+      });
+    });
+
+    return rows;
+  }, [docs]);
+
+  /* ----------------------- 4️⃣  Column definitions (AG) ---------------------- */
+  const columnDefs: ColDef[] = useMemo(() => {
+    if (productRows.length === 0) return [];
+    const minWidthForHeader = (label: string) => Math.max(label.length * 8 + 60, 80); // never smaller than 80 px
+
+    return Object.keys(productRows[0]).map((k) => ({
+      headerName: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      minWidth: minWidthForHeader(k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())), // 👈 key addition
+      field: k,
+      flex: 1,
+      sortable: true,
+      filter: true,
+      tooltipField: k,
+      valueFormatter: (p: any) =>
+        typeof p.value === "number" ? p.value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p.value,
+    }));
+  }, [productRows]);
+
+  /* ------------------------- 5️⃣  Chart data builders ------------------------ */
+  const maturityData = useMemo(() => buildMaturityChartData(productRows), [productRows]);
+  const riskData = useMemo(() => buildCounterpartyRiskData(productRows), [productRows]);
+
+  /* ----------------------------- Early exits ------------------------------- */
+  if (status === "loading") return <p className="p-6">Loading …</p>;
+  if (status === "error") return <p className="p-6 text-red-500">{errorMsg}</p>;
+
+  /* -------------------------------- Render -------------------------------- */
   return (
-    <div className="min-h-screen">
-      <div className="mx-auto px-6 py-8">
-        <UserHeader />
+    <div className="min-h-screen p-6 space-y-10">
+      {/* 📊  Charts */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Maturity Ladder */}
+        <div className="glass-card rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-[#11223D] mb-4">Maturity Ladder</h3>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={maturityData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="quarter"
+                  tick={{ fontSize: 11, fill: "#11223D" }}
+                  stroke="#11223D"
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "#11223D" }}
+                  stroke="#11223D"
+                  label={{ value: "USD MM", angle: -90, position: "insideLeft", style: { textAnchor: "middle" } }}
+                />
+                <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }} />
 
-        {/* Greeting Block */}
-        <div className="mb-8">
-          <p className="text-lg italic text-[#11223D]/60 max-w-4xl leading-relaxed">
-            Good to see you, James! Your structured notes are working quietly in the background &ndash; here&apos;s the
-            full picture, fresh to the minute. Tap any row to peek inside the payoff, coupon dates and next
-            cash&ndash;flow.
-          </p>
+                {Array.from(
+                  new Set(productRows.map((r) => r.issuing_bank).filter((bank): bank is string => !!bank))
+                ).map((bank, idx) => (
+                  <Bar
+                    key={bank}
+                    dataKey={bank}
+                    stackId="a"
+                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                    name={bank}
+                    radius={[2, 2, 0, 0]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        <InfoCards />
-
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-          <MaturityChart />
-          <CounterpartyRiskChart />
+        {/* Counterparty Risk */}
+        <div className="glass-card rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-[#11223D] mb-4">Counterparty Risk Distribution</h3>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={riskData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={120}
+                  paddingAngle={2}
+                  dataKey="value"
+                  nameKey="name"
+                >
+                  {riskData.map((entry, idx) => (
+                    <Cell key={`cell-${idx}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }}
+                  formatter={(value, entry) => `${value} (${entry.payload?.value || 0}%)`}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-
-        {/* Data Table */}
-        <div className="mb-8">
-          <ProductsTable onRowClick={handleRowClick} />
-        </div>
-
-        {/* Footer */}
-        <footer className="flex items-center justify-between pt-6 border-t border-white/20">
-          <p className="text-sm text-[#11223D]/50">
-            Data updated{" "}
-            {new Date().toLocaleString("en-US", {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </p>
-          <Button variant="outline" className="border-[#11223D]/20 text-[#11223D] hover:bg-[#11223D]/5 wealth-focus">
-            Download CSV
-          </Button>
-        </footer>
       </div>
 
-      {/* Product Details Drawer */}
-      <ProductDrawer isOpen={isDrawerOpen} onClose={closeDrawer} product={selectedProduct} />
+      {/* 📑  Structured Products Table */}
+      <div className="ag-theme-quartz w-full" style={{ maxHeight: 600 }}>
+        <AgGridReact
+          rowData={productRows}
+          columnDefs={columnDefs}
+          animateRows
+          domLayout="autoHeight"
+          onRowClicked={(e) => setSelectedRow(e.data)}
+        />
+      </div>
+
+      {/* ⬇  CSV export – optional (plug in your own handler) */}
+      <footer className="flex items-center justify-between pt-6 border-t border-white/20">
+        <p className="text-sm text-[#11223D]/50">
+          Data updated 
+          {new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </p>
+        <Button variant="outline" className="border-[#11223D]/20 text-[#11223D] hover:bg-[#11223D]/5 wealth-focus">
+          Download CSV
+        </Button>
+      </footer>
+
+      {/* TODO: Hook up your <ProductDrawer> here if desired */}
+      {selectedRow && (
+        <pre className="fixed bottom-6 right-6 p-4 bg-white shadow-xl rounded-lg max-w-md overflow-auto text-xs">
+          {JSON.stringify(selectedRow, null, 2)}
+        </pre>
+      )}
     </div>
   );
 };
 
-export default Index;
+export default StructuredProductsPage;
 
-const test = [
-  {
-    bank: "J.P. Morgan",
-    as_of_date: "31-05-2025",
-    cash_and_equivalents: [
-      {
-        asset_name: "U.S. Dollar Current Account",
-        balance_USD: 17177.44,
-      },
-      {
-        asset_name: "JPMORGAN LIQUIDITY FUNDS JPM USD LIQUIDITY LVNAV W (ACC.)",
-        balance_USD: 200299.98,
-      },
-    ],
-    direct_fixed_income: [],
-    fixed_income_funds: [],
-    direct_equities: [
-      {
-        stock_name: "SPDR S&P 500 ETF TRUST",
-        number_of_shares: 200,
-        market_value_USD: 117878,
-      },
-    ],
-    equities_fund: [],
-    alternative_fund: [],
-    structured_products: [
-      {
-        product_name: "BARC FCN TSM US 11.7600% 061025 XS3025776686",
-        notional_USD: 100000,
-        market_value_USD: 100000,
-      },
-      {
-        product_name: "BNP FCN AAPL US 6.5800% 061025 XS3035098873",
-        notional_USD: 180000,
-        market_value_USD: 180000,
-      },
-      {
-        product_name: "BNP FCN CRM US 9.5900% 061025 XS3035098527",
-        notional_USD: 180000,
-        market_value_USD: 180000,
-      },
-      {
-        product_name: "GS FCN AMZN US 10.3300% 061025 XS3041681290",
-        notional_USD: 100000,
-        market_value_USD: 100000,
-      },
-      {
-        product_name: "GS FCN META US 9.0400% 061025 XS3041681373",
-        notional_USD: 100000,
-        market_value_USD: 100000,
-      },
-    ],
-    loans: [],
-  },
-  {
-    bank: "Bank of Singapore",
-    as_of_date: "31-05-2025",
-    cash_and_equivalents: [
-      {
-        asset_name: "Current Account USD 10-1001-001715148",
-        balance_USD: 238049.44,
-      },
-      {
-        asset_name: "FIXED DEPOSITS USD 3.95% 12/06/2025 AA250658QQ1M",
-        balance_USD: 667637.64,
-      },
-      {
-        asset_name: "FIXED DEPOSITS USD 3.95% 12/06/2025 AA250658QQ1M (interest)",
-        balance_USD: 2270.9,
-      },
-    ],
-    direct_fixed_income: [],
-    fixed_income_funds: [
-      {
-        fund_name: "AB-American Income A2 USD-ACC LU0095030564 PRR:2",
-        units: 6879.945,
-        market_value_USD: 222084.62,
-      },
-      {
-        fund_name: "LA Shrt Dur Inc USD Z Acc-ACC IE00BFNWYB63 PRR:2",
-        units: 16313.214,
-        market_value_USD: 205383.36,
-      },
-      {
-        fund_name: "MNG (Lux) Optinc A-H Acc USD-ACC LU1670725347 PRR:3",
-        units: 16591.177,
-        market_value_USD: 200016.59,
-      },
-      {
-        fund_name: "PIMCO GIS INCOME FUND EA USD ACC IE00B7XLF1990 PRR:4",
-        units: 12604.156,
-        market_value_USD: 210614.55,
-      },
-      {
-        fund_name: "VF TF Strat Inc Fd H h USD-ACC LU1695535135 PRR:5",
-        units: 1621.987,
-        market_value_USD: 206073.45,
-      },
-    ],
-    direct_equities: [
-      {
-        stock_name: "AMAZON.COM INC US0231351067 AMZN.US PRR:3",
-        number_of_shares: 150,
-        market_value_USD: 30751.5,
-      },
-      {
-        stock_name: "MICROSOFT CORPORATION US5949181045 MSFT.US PRR:3",
-        number_of_shares: 100,
-        market_value_USD: 46036,
-      },
-    ],
-    equities_fund: [
-      {
-        fund_name: "GMO Qly Invest J USD-ACC IE00B7JWCQ50 PRR:3",
-        units: 1614.466,
-        market_value_USD: 49870.85,
-      },
-    ],
-    alternative_fund: [
-      {
-        fund_name: "AAAP-MLE SP TLI F USD-ACC XD1433777764",
-        units: 2250,
-        market_value_USD: 227317.5,
-      },
-      {
-        fund_name: "AAAP-MILE FD 10125F USD-ACC QTX005136838",
-        units: 250,
-        market_value_USD: 24407.5,
-      },
-    ],
-    structured_products: [
-      {
-        product_name: "6M USD OCBC FCN - AMZN.OQ, TSM.N 22 0725 XS2597807030 PRR:5",
-        notional_USD: 100000,
-        market_value_USD: 98660,
-      },
-    ],
-    loans: [],
-  },
-  {
-    bank: "UBS Singapore",
-    as_of_date: "31-05-2025",
-    cash_and_equivalents: [
-      {
-        asset_name: "Current Account for Private Clients EUR",
-        balance_USD: 9050,
-      },
-      {
-        asset_name: "Current Account for Private Clients USD",
-        balance_USD: 3592,
-      },
-      {
-        asset_name: "Current Account for Private Clients HKD",
-        balance_USD: 250,
-      },
-      {
-        asset_name: "Call Deposit USD",
-        balance_USD: 388145,
-      },
-    ],
-    direct_fixed_income: [],
-    fixed_income_funds: [
-      {
-        fund_name: "JPMorgan Funds SICAV Income JPM A(mth)-USD-dist",
-        units: 4597.7,
-        market_value_USD: 35770,
-      },
-      {
-        fund_name: "PIMCO Funds Global Investors Series Plc - Income Fund E-USD",
-        units: 3906.25,
-        market_value_USD: 36836,
-      },
-    ],
-    direct_equities: [
-      {
-        stock_name: "Novo Nordisk A/S (Sponsored American Deposit Receipt)",
-        number_of_shares: 1250,
-        market_value_USD: 89375,
-      },
-      {
-        stock_name: "PayPal Holdings Inc.",
-        number_of_shares: 604,
-        market_value_USD: 42449,
-      },
-      {
-        stock_name: "The Walt Disney Company",
-        number_of_shares: 250,
-        market_value_USD: 28260,
-      },
-    ],
-    equities_fund: [
-      {
-        fund_name: "BlackRock Global Funds SICAV - World Healthscience Fund A2-capitalisation",
-        units: 1726.52,
-        market_value_USD: 112120,
-      },
-    ],
-    alternative_fund: [
-      {
-        fund_name: "Apollo Debt Solutions BDC iCapital Offshore Access Fund SPC SP 1 A-B-series C-dist",
-        units: 101.16,
-        market_value_USD: 99750,
-      },
-      {
-        fund_name: "Partners Group Global Value SICAV R-N-USD-capitalisation",
-        units: 670.96,
-        market_value_USD: 119035,
-      },
-    ],
-    structured_products: [
-      {
-        product_name: "8% Autocallable RCN Barrick Gold/Newmont (2025-24.11.2025)",
-        notional_USD: 100000,
-        market_value_USD: 99227,
-      },
-      {
-        product_name: "8% J.P. Morgan SP (NL) Blackrock Rg/Blackstone (2024-12.06.2025)",
-        notional_USD: 100000,
-        market_value_USD: 86478,
-      },
-      {
-        product_name: "8% Vontobel FP (AE) Wells Fargo/Bank ofAmer. (2024-24.06.2025)",
-        notional_USD: 100000,
-        market_value_USD: 98900,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN META/Alphabet -A (2025-21.07.2025)",
-        notional_USD: 100000,
-        market_value_USD: 100110,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN Thermofishe/Eli Lilly (2025-06.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 92894,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN LockheedMart/Boeing (2025-06.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 100674,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN Dell Tech -C/Apple (2025-06.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 100551,
-      },
-      {
-        product_name: "8% Autocallable RCN JPMorgan Ch/Goldm Sachs (2025-07.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 99281,
-      },
-      {
-        product_name: "10% Autocall Barrier RCN Broadcom/Amazon (2025-11.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 99177,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN META/Nvidia (2025-20.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 100480,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN Alphabet -A/Broadcom (2025-17.09.2025)",
-        notional_USD: 100000,
-        market_value_USD: 99964,
-      },
-      {
-        product_name: "8% Autocallable RCN BARC Microsoft/Apple/Adobe (2025-16.12.2025)",
-        notional_USD: 100000,
-        market_value_USD: 100000,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN JPM SPDR Gold/FreeportMcMo (2024-25.07.2025)",
-        notional_USD: 100000,
-        market_value_USD: 96378,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN ASML Holding/Taiwan Semi (2025-18.08.2025)",
-        notional_USD: 100000,
-        market_value_USD: 99756,
-      },
-      {
-        product_name: "Perles CIO Chi Reopen USD (2023-08.02.2030)",
-        notional_USD: 100500,
-        market_value_USD: 73169,
-      },
-      {
-        product_name: "Tracker Cert. London on CIO Tech. Disrupt. EQ (2023-18.10.2030)",
-        notional_USD: 103193,
-        market_value_USD: 113496,
-      },
-      {
-        product_name: "Participation Notes CIO Longevity USD (2025-01.04.2032)",
-        notional_USD: 99136,
-        market_value_USD: 95465,
-      },
-      {
-        product_name: "8% Autocall Barrier RCN JD.com -ADR/Alibaba -ADR (2025-17.09.2025)",
-        notional_USD: 100000,
-        market_value_USD: 99429,
-      },
-    ],
-    loans: [],
-  },
-];
+/* -------------------------------------------------------------------------- */
+/*                               🔧 UTILITIES                                */
+/* -------------------------------------------------------------------------- */
+
+/** Extract counterparty (issuer) name from a row */
+function extractCounterparty(row: any): string {
+  if (row.issuing_bank) return row.issuing_bank;
+  if (row.security_description) return row.security_description.split(" ")[0];
+  return "Unknown";
+}
+
+/** Try to derive a proper Date from the maturity bits embedded in `Description` */
+function extractMaturity(row: any): Date | null {
+  if (row.maturity_date) return new Date(row.maturity_date);
+
+  // Fallback: look for 6‑digit date‑like token, e.g. 020925‑USD → 02 Sep 2025
+  const match = row.Description?.match(/(\d{2})(\d{2})(\d{2})-/);
+  if (match) {
+    const [_, dd, mm, yy] = match;
+    return new Date(`20${yy}-${mm}-${dd}`); // naive but good enough
+  }
+  return null;
+}
+
+/**
+ * Build maturity‑ladder rows: one row per quarter, one column per issuer
+ * Values are in *USD millions* for readability (1 000 000 divisor)
+ */
+function buildMaturityChartData(rows: ProductRow[]) {
+  const buckets: Record<string, Record<string, number>> = {};
+
+  rows.forEach((r) => {
+    const maturity = extractMaturity(r);
+    if (!maturity) return;
+
+    const year = maturity.getFullYear();
+    const quarter = Math.floor(maturity.getMonth() / 3) + 1; // 0‑based → 1‑based
+    const key = `${year} Q${quarter}`;
+
+    const bank = extractCounterparty(r);
+    const amt = r.market_value_usd ?? r.total_cost_usd ?? 0;
+
+    if (!buckets[key]) buckets[key] = {};
+    buckets[key][bank] = (buckets[key][bank] || 0) + amt / 1_000_000; // → USD MM
+  });
+
+  return Object.entries(buckets)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([quarter, obj]) => ({ quarter, ...obj }));
+}
+
+/**
+ * Build counterparty‑risk slices: % share of total market value per issuer
+ */
+function buildCounterpartyRiskData(rows: ProductRow[]) {
+  const totals: Record<string, number> = {};
+  let grand = 0;
+
+  rows.forEach((r) => {
+    const bank = extractCounterparty(r);
+    const amt = r.market_value_usd ?? r.total_cost_usd ?? 0;
+
+    totals[bank] = (totals[bank] || 0) + amt;
+    grand += amt;
+  });
+
+  return Object.entries(totals).map(([bank, amt], idx) => ({
+    name: bank,
+    value: +((amt / grand) * 100).toFixed(2),
+    color: CHART_COLORS[idx % CHART_COLORS.length],
+  }));
+}
+
+/** Recharts‑friendly tooltip for pie slices */
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+        <p className="font-medium text-[#11223D]">{payload[0].name}</p>
+        <p className="text-sm text-[#11223D]/70">{payload[0].value}% of total exposure</p>
+      </div>
+    );
+  }
+  return null;
+};
