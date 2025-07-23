@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAutoResizeTextarea } from "@/hooks/use-auto-resize-textarea";
 import { useWealthStore } from "@/stores/wealth-store";
+import { useChatStore } from "@/stores/chat-store";
 
 interface AIInputWithLoadingProps {
   id?: string;
@@ -24,53 +25,22 @@ export function AIInputWithLoading({
   placeholder = "Ask anything",
   minHeight = 80,
   maxHeight = 200,
-  loadingDuration = 3000,
-  thinkingDuration = 1000,
   onSubmit,
   className,
-  autoAnimate = false,
 }: AIInputWithLoadingProps) {
-  // const [chatInput, setChatInput] = useState("");
-  const { chatInput, setChatInput, msgLoad } = useWealthStore();
-  // const [submitted, setSubmitted] = useState(autoAnimate);
+  const { chatInput, setChatInput, msgLoad } = useChatStore();
   const submitted = msgLoad;
-  const [isAnimating, setIsAnimating] = useState(autoAnimate);
 
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight,
     maxHeight,
   });
 
-  // useEffect(() => {
-  //   let timeoutId: NodeJS.Timeout;
-
-  //   const runAnimation = () => {
-  //     if (!isAnimating) return;
-  //     setSubmitted(true);
-  //     timeoutId = setTimeout(() => {
-  //       setSubmitted(false);
-  //       timeoutId = setTimeout(runAnimation, thinkingDuration);
-  //     }, loadingDuration);
-  //   };
-
-  //   if (isAnimating) {
-  //     runAnimation();
-  //   }
-
-  //   return () => clearTimeout(timeoutId);
-  // }, [isAnimating, loadingDuration, thinkingDuration]);
-
   const handleSubmit = async () => {
     if (!chatInput.trim() || submitted) return;
-
-    // setSubmitted(true);
     await onSubmit?.(chatInput);
     setChatInput("");
     adjustHeight(true);
-
-    // setTimeout(() => {
-    //   setSubmitted(false);
-    // }, loadingDuration);
   };
 
   return (
@@ -122,7 +92,6 @@ export function AIInputWithLoading({
             )}
           </button>
         </div>
-        {/* <p className="pl-4 h-4 text-xs mx-auto text-black/70 dark:text-white/70">{submitted ? "AI is thinking..." : "Ready to submit!"}</p> */}
       </div>
     </div>
   );

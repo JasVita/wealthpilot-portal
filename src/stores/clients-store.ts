@@ -35,12 +35,6 @@ interface ClientState {
   addClient: (name: string) => void;
   deleteClient: (id: string) => void;
   updateClient: (id: string, partial: Partial<Omit<Client, "id">>) => void;
-
-  setNews: (id: string, news: News) => void;
-  setAlerts: (id: string, alerts: Alerts) => void;
-  addOverview: (id: string, o: Overview) => void;
-  setOverviews: (id: string, o: Overview[]) => void;
-
   loadClients: () => Promise<void>;
 }
 
@@ -141,38 +135,6 @@ export const useClientStore = create<ClientState>()(
           throw err;
         }
       },
-
-      setNews: (id, news) =>
-        set((s) => ({
-          clients: {
-            ...s.clients,
-            [id]: { ...s.clients[id], news },
-          },
-        })),
-
-      setAlerts: (id, alerts) =>
-        set((s) => ({
-          clients: {
-            ...s.clients,
-            [id]: { ...s.clients[id], alerts },
-          },
-        })),
-
-      addOverview: (id, overview) =>
-        set((s) => ({
-          clients: {
-            ...s.clients,
-            [id]: {
-              ...s.clients[id],
-              overviews: [...s.clients[id].overviews, overview],
-            },
-          },
-        })),
-
-      setOverviews: (id, overviews) =>
-        set((s) => ({
-          clients: { ...s.clients, [id]: { ...s.clients[id], overviews } },
-        })),
 
       loadClients: async () => {
         const { id: user_id } = useUserStore.getState();
