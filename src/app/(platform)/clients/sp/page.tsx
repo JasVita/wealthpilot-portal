@@ -120,20 +120,40 @@ const StructuredProductsPage = () => {
       const { assets } = doc;
       if (!assets) return;
 
-      Object.entries(assets).forEach(([key, value]) => {
-        if (!key.toLowerCase().includes("product")) return; // skip non‑product tables
+      Object.entries(assets).forEach(([tblKey, tblVal]: [string, any]) => {
+        if (!tblKey.toLowerCase().includes("product")) return; // skip non-product tables
 
-        const tableMeta: any = value;
-        // Most tables expose a `subTableOrder` → grab the first sub‑table
-        const subName: string | undefined = tableMeta.subTableOrder?.[0];
-        const subTableRows: any[] = subName ? tableMeta[subName]?.rows ?? [] : [];
+        // ── pick the first sub-table (or the rows array itself) ──────────────────
+        const subName = tblVal.subTableOrder?.[0];
+        const rawRows: any[] = subName ? tblVal[subName]?.rows ?? [] : tblVal.rows ?? [];
 
-        subTableRows.forEach((r) => {
+        rawRows.forEach((r) => {
+          /* ---------------- source‑agnostic extraction ---------------- */
+          const description = pick<string>(r, ["security_description", "Description"]) || "";
+          const marketValue =
+            pick<number>(r, ["market_value_usd", "market_value_orig_ccy", "Mkt Val (USD)", "Mkt Val (Orig. Ccy)"]) ?? 0;
+
+          const quantity = pick<number>(r, ["quantity", "Quantity"]) ?? "—";
+          const issuingBank = r.issuing_bank ?? (description.split(" ")[0] || "Unknown");
+          const category =
+            r.security_type ??
+            tblKey.replace(/_/g, " ") ?? // “Equity Structured Products”
+            "—";
+
           rows.push({
-            ...r,
-            issuing_bank: r.security_description?.split(" ")[0] ?? "Unknown", // crude parsing → works for most
+            /* ── 10 desired columns ────────────────────────────────── */
+            description, // 1
+            market_value_usd: marketValue, // 2
+            quantity, // 3
+            issuing_bank: issuingBank, // 4
+            ...parseStructuredProduct(description), // 5‑8 → tenor / structure / underlying / coupon
+            valuation: computeValuation(r), // 9
+            category, // 10
+
+            /* ── any extras you still rely on elsewhere (charts…) ── */
+            total_cost_usd: r.total_cost_usd, // keeps existing charts happy
             doc_id: doc.id,
-          });
+          } as ProductRow);
         });
       });
     });
@@ -142,22 +162,34 @@ const StructuredProductsPage = () => {
   }, [docs]);
 
   /* ----------------------- 4️⃣  Column definitions (AG) ---------------------- */
-  const columnDefs: ColDef[] = useMemo(() => {
-    if (productRows.length === 0) return [];
-    const minWidthForHeader = (label: string) => Math.max(label.length * 8 + 60, 80); // never smaller than 80 px
+  const columnDefs: ColDef[] = useMemo((): ColDef[] => {
+    const minWidth = (label: string) => Math.max(label.length * 8 + 60, 90);
 
-    return Object.keys(productRows[0]).map((k) => ({
-      headerName: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      minWidth: minWidthForHeader(k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())), // 👈 key addition
-      field: k,
-      flex: 1,
-      sortable: true,
-      filter: true,
-      tooltipField: k,
-      valueFormatter: (p: any) =>
-        typeof p.value === "number" ? p.value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p.value,
-    }));
-  }, [productRows]);
+    return [
+      { headerName: "Description", field: "description", minWidth: minWidth("Description"), flex: 2 },
+      {
+        headerName: "Market Value USD",
+        field: "market_value_usd",
+        minWidth: 150,
+        flex: 1,
+        valueFormatter: (p) => p.value?.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+      },
+      {
+        headerName: "Quantity",
+        field: "quantity",
+        minWidth: 120,
+        flex: 1,
+        valueFormatter: (p) => p.value?.toLocaleString(),
+      },
+      { headerName: "Issuing Bank", field: "issuing_bank", minWidth: 110, flex: 1 },
+      { headerName: "Tenor", field: "tenor", minWidth: 90, flex: 0.8 },
+      { headerName: "Structure", field: "structure", minWidth: 110, flex: 1 },
+      { headerName: "Underlying", field: "underlying", minWidth: 180, flex: 1.5 },
+      { headerName: "Coupon", field: "coupon", minWidth: 90, flex: 0.8 },
+      { headerName: "Valuation", field: "valuation", minWidth: 110, flex: 1 },
+      { headerName: "Category", field: "category", minWidth: 190, flex: 1.5 },
+    ];
+  }, []);
 
   /* ------------------------- 5️⃣  Chart data builders ------------------------ */
   const maturityData = useMemo(() => buildMaturityChartData(productRows), [productRows]);
@@ -363,3 +395,37 @@ const CustomTooltip = ({ active, payload }: any) => {
   }
   return null;
 };
+
+// Handy “first match” getter – ignores null/undefined/empty   *
+export function pick<T>(obj: Record<string, any>, keys: string[]): T | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (v !== undefined && v !== null && v !== "") return v as T;
+  }
+  return undefined;
+}
+
+// Parse tenor / structure / underlying / coupon from 1‑liner  *
+
+export function parseStructuredProduct(descRaw = "") {
+  const desc = descRaw.toUpperCase();
+
+  const tenor = desc.match(/(\d{1,2}M)/)?.[1] ?? "—";
+  const structure = desc.match(/\b(FCN|DCN|PRTN|CLN|ELN)\b/)?.[1] ?? "—";
+  const underlying = desc.split(" - ")[1]?.split(/\s\d/)[0]?.trim() ?? "—";
+  const coupon = desc.match(/(\d+(\.\d+)?%)/)?.[1] ?? "—";
+
+  return { tenor, structure, underlying, coupon };
+}
+
+// Very light “valuation” label: above / below / at par       *
+export function computeValuation(r: Record<string, any>): string {
+  const cost = pick<number>(r, ["unit_cost_price", "ave_unit_cost", "Unit Cost Price"]);
+  const last = pick<number>(r, ["unit_last_price", "market_price", "Unit Last Price"]);
+  if (cost && last) {
+    const delta = last / cost - 1;
+    if (Math.abs(delta) < 0.002) return "Par";
+    return delta > 0 ? "Above par" : "Below par";
+  }
+  return "—";
+}

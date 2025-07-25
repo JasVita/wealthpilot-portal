@@ -108,3 +108,255 @@ export default function Page() {
     </section>
   );
 }
+
+// "use client";
+// import { useState, useRef, KeyboardEvent, MouseEventHandler } from "react";
+// import { motion } from "framer-motion";
+// import { Card, CardContent } from "@/components/ui/card";
+// import { Button } from "@/components/ui/button";
+// import { ArrowRight, Plus, Settings, Settings2 } from "lucide-react";
+// import { useChatStore } from "@/stores/chat-store";
+
+// /**
+//  * ChatInterface – Wealth Pilot chat UI inspired by Perplexity
+//  *
+//  * Features
+//  * 1. Initial compact input (120 × 640)
+//  * 2. Expands to 360 px height on focus and shows 6 primary suggestions
+//  * 3. Below, four pill‑style quick prompts sized to content
+//  * 4. Clicking a pill pre‑fills input, collapses to 240 px height, and shows 3 follow‑up suggestions
+//  * 5. ⏎ submits – question becomes bold heading; answer placeholder rendered below
+//  */
+// export default function ChatInterface() {
+//   /* --------------------------- state --------------------------- */
+//   const [value, setValue] = useState("");
+//   const { chatInput, setChatInput, msgLoad, handleSendMessage } = useChatStore();
+
+//   const [phase, setPhase] = useState<"initial" | "focused" | "suggested" | "submitted">("initial");
+
+//   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+//   /* --------------------- suggestion configs ------------------- */
+//   const primarySuggestions = [
+//     "Show my net worth", // 6 items
+//     "Asset breakdown by class",
+//     "Last month performance",
+//     "Top gainers & losers",
+//     "Cash flow summary",
+//     "Project my retirement",
+//   ];
+
+//   const followUpSuggestions = ["Compare with last year", "Drill into equities", "Export to Excel"];
+
+//   const quickPills = [
+//     "Portfolio", // 4 pills below input
+//     "Dividends",
+//     "Fees",
+//     "Risk",
+//     "Clients",
+//   ];
+
+//   /* ------------------------ handlers -------------------------- */
+//   const handleFocus = () => {
+//     if (phase === "initial") setPhase("focused");
+//   };
+
+//   const handleBlur = () => {
+//     if (phase !== "submitted" && phase !== "suggested") {
+//       // slight timeout so click events register
+//       // setTimeout(() => setPhase("initial"), 120);
+//       setPhase("initial");
+//     }
+//   };
+
+//   const handleSuggestionClick = (text: string) => {
+//     setValue(text);
+//     setPhase("suggested");
+//     inputRef.current?.focus();
+//   };
+
+//   const handleSubmit = async () => {
+//     if (!chatInput.trim() || msgLoad) return;
+//     await handleSendMessage();
+//     setChatInput("");
+//     // adjustHeight(true);
+//   };
+
+//   /* --------------------- derived values ----------------------- */
+//   const cardHeight = {
+//     initial: 120,
+//     focused: 360,
+//     suggested: 240,
+//     submitted: "auto",
+//   }[phase];
+
+//   /* -------------------------- UI ------------------------------ */
+//   return (
+//     <div className="flex h-full p-4 justify-center">
+//       <div className="flex w-full max-w-[640px] flex-col items-center gap-4 h-fit mt-[100px]">
+//         {/* ——— heading after submit ——— */}
+//         {phase === "submitted" && <h1 className="mb-2 text-center text-2xl font-bold lg:text-3xl">{value}</h1>}
+//         {phase !== "submitted" && <p className="text-center text-4xl font-semibold text-gray-700">Wealth Pilot</p>}
+
+//         {/* ——— input card ——— */}
+//         <motion.div
+//           layout
+//           initial={false}
+//           animate={{ height: cardHeight }}
+//           transition={{ type: "spring", bounce: 0 }}
+//           className="w-full"
+//         >
+//           <Card className="h-full w-full rounded-xl shadow-none border-sidebar-ring p-0">
+//             <CardContent className="flex rounded-xl h-full flex-col gap-4 p-3">
+//               {/* text input */}
+//               {phase !== "submitted" && (
+//                 // <Input
+//                 //   ref={inputRef}
+//                 //   placeholder="Ask anything…"
+//                 //   value={value}
+//                 //   onChange={(e) => setValue(e.target.value)}
+//                 //   onFocus={handleFocus}
+//                 //   onBlur={handleBlur}
+//                 //   onKeyDown={onKeyDown}
+//                 //   className="w-full h-full border text-base ring-0 outline-0"
+//                 // />
+//                 // <input
+//                 //   ref={inputRef}
+//                 //   placeholder="Ask anything…"
+//                 //   value={value}
+//                 //   onChange={(e) => setValue(e.target.value)}
+//                 //   onFocus={handleFocus}
+//                 //   onBlur={handleBlur}
+//                 //   // onKeyDown={onKeyDown}
+//                 //   className="w-full h-full border text-base ring-0 outline-0"
+//                 // />
+//                 <div>
+//                   <textarea
+//                     // id="chat-input"
+//                     placeholder="Ask anything…"
+//                     className="w-full h-fit min-h-[50px] max-h-[250px] border ring-0 outline-0 text-base resize-none text-wrap shadow-none"
+//                     ref={inputRef}
+//                     value={value}
+//                     onFocus={handleFocus}
+//                     onBlur={handleBlur}
+//                     onChange={(e) => {
+//                       setValue(e.target.value);
+//                       // adjustHeight();
+//                     }}
+//                     onKeyDown={(e) => {
+//                       if (e.key === "Enter" && !e.shiftKey) {
+//                         e.preventDefault();
+//                         handleSubmit();
+//                       }
+//                     }}
+//                     // disabled={submitted}
+//                   />
+//                   <div className="flex justify-between border">
+//                     <div className="inline-flex items-center gap-2 rounded-md p-1">
+//                       <Plus
+//                         size={18}
+//                         className="cursor-pointer hover:bg-[#ebedee] "
+//                         aria-label="Add attachment"
+//                         // onClick={onAdd}
+//                       />
+//                       <Settings2
+//                         size={18}
+//                         className="cursor-pointer hover:bg-[#ebedee]"
+//                         aria-label="Tools"
+//                         // onClick={onTools}
+//                       />
+//                     </div>
+
+//                     {/* <button
+//                       onClick={handleSubmit}
+//                       className={cn(
+//                         "absolute right-3 top-1/2 -translate-y-1/2 rounded-xl py-1 px-1",
+//                         submitted ? "bg-none" : "bg-black/5 dark:bg-white/5"
+//                       )}
+//                       type="button"
+//                       disabled={submitted}
+//                     >
+//                       {submitted ? (
+//                         <div
+//                           className="w-4 h-4 bg-black dark:bg-white rounded-sm animate-spin transition duration-700"
+//                           style={{ animationDuration: "3s" }}
+//                         />
+//                       ) : (
+//                         <ArrowUp
+//                           className={cn(
+//                             "w-4 h-4 transition-opacity dark:text-white",
+//                             chatInput ? "opacity-100" : "opacity-30"
+//                           )}
+//                         />
+//                       )}
+//                     </button> */}
+//                   </div>
+//                 </div>
+//               )}
+
+//               {/* suggestions inside card */}
+//               {phase === "focused" && (
+//                 <div className="grid grid-cols-2 gap-2 pt-2">
+//                   {primarySuggestions.map((s) => (
+//                     <Button
+//                       key={s}
+//                       variant="secondary"
+//                       className="truncate"
+//                       onMouseDown={() => handleSuggestionClick(s)}
+//                     >
+//                       {s}
+//                     </Button>
+//                   ))}
+//                 </div>
+//               )}
+
+//               {phase === "suggested" && (
+//                 <div className="flex flex-wrap gap-2 pt-2 border">
+//                   {followUpSuggestions.map((s) => (
+//                     <Button
+//                       key={s}
+//                       size="lg"
+//                       variant="ghost"
+//                       className="border border-gray-300 px-3 py-1 text-sm"
+//                       onMouseDown={() => handleSuggestionClick(s)}
+//                     >
+//                       {s}
+//                     </Button>
+//                   ))}
+//                 </div>
+//               )}
+
+//               {/* answer placeholder */}
+//               {phase === "submitted" && (
+//                 <div className="prose max-w-none">
+//                   <p>
+//                     {/* TODO: replace with real answer rendering */}
+//                     Here will be the intelligent answer fetched from your backend. You can stream tokens here for a
+//                     chat‑like feel.
+//                   </p>
+//                 </div>
+//               )}
+//             </CardContent>
+//           </Card>
+//         </motion.div>
+
+//         {/* ——— quick pills outside card ——— */}
+//         {phase !== "submitted" && (
+//           <div className="flex flex-wrap justify-center gap-2 mt-5">
+//             {quickPills.map((p) => (
+//               <Button
+//                 key={p}
+//                 size="sm"
+//                 variant="outline"
+//                 className="px-3 py-1 text-base bg-[#ebedee]"
+//                 onMouseDown={() => handleSuggestionClick(p + " ")}
+//               >
+//                 {p}
+//               </Button>
+//             ))}
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }

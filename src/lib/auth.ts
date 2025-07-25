@@ -14,6 +14,11 @@ const users = [
     password: "$2b$10$m0DJQjTMazHP7UeD26UMXOvJM0LEUuYW0vWa38SDImWrze/gKWCmu",
     id: "2",
   },
+  {
+    email: "vincci.lau@lavintoll.com",
+    password: "$2b$10$5Tw0bnFXF9IQG4obZTwJ2eCJGPCTcKFYqGe0aOjJZF3L41iJpASnS",
+    id: "3",
+  },
 ];
 
 export async function verifyCreds(email: string, pw: string) {

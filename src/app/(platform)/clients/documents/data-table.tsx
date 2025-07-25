@@ -27,6 +27,9 @@ export interface DataTableHandle {
 
 /** crude text-to-pixels helper (≈8 px per char + 24 px padding) */
 const minWidthForHeader = (label: string) => Math.max(label.length * 8 + 60, 80); // never smaller than 80 px
+const capitalizeFirstLetter = (val: string) => {
+  return String(val).charAt(0).toUpperCase() + String(val).slice(1);
+};
 
 export const DataTable = forwardRef<DataTableHandle, DataTableProps>(({ title, rows, maxHeight = 600 }, ref) => {
   const safeRows: Record<string, unknown>[] = Array.isArray(rows) ? rows : [];
@@ -40,7 +43,7 @@ export const DataTable = forwardRef<DataTableHandle, DataTableProps>(({ title, r
       const header = field.replace(/_/g, " ");
       return {
         field,
-        headerName: header,
+        headerName: capitalizeFirstLetter(header),
         minWidth: minWidthForHeader(header), // 👈 key addition
         flex: 1, // still share extra space
         sortable: true,
@@ -73,7 +76,7 @@ export const DataTable = forwardRef<DataTableHandle, DataTableProps>(({ title, r
 
   return (
     <section className="space-y-2">
-      {title && <h4 className="font-semibold">{title}</h4>}
+      {title && <h4 className="font-semibold">{capitalizeFirstLetter(title)}</h4>}
 
       {/* wrapper controls both vertical & horizontal overflow */}
       <div className="w-full overflow-x-auto overflow-y-auto" style={{ maxHeight }}>
