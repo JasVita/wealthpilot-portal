@@ -208,3 +208,13 @@ a {
     @apply bg-background text-foreground;
   }
 }
+
+.price-up {
+  color: green;
+  font-weight: 600;
+}
+
+.price-down {
+  color: red;
+  font-weight: 600;
+}

@@ -252,7 +252,12 @@ export default function Page() {
           <div className="space-y-8 mt-6">
             {assetKeys.map((k) =>
               aggregatedTables[k].length ? (
-                <DataTable key={k} title={assetLabels[k]} rows={aggregatedTables[k]} />
+                <DataTable
+                  key={k}
+                  title={assetLabels[k]}
+                  rows={aggregatedTables[k]}
+                  showLivePrices={assetLabels[k] === "Direct Equities"} // ✅ only true for this label
+                />
               ) : null
             )}
           </div>
