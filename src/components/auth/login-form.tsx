@@ -113,6 +113,15 @@ export function LoginForm({
               {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
+          {/* prettier “Forgot password?” link */}
+          <div className="flex justify-end">
+            <a
+              href="/forgot-password"
+              className="text-xs text-gray-500 hover:text-blue-600 hover:underline transition-colors"
+            >
+              Forgot password?
+            </a>
+          </div>
         </div>
 
         {/* Login button */}
