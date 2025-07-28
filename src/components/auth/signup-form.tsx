@@ -6,58 +6,44 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";   // ← new
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { useUserStore } from "@/stores/user-store";
-import { useClientStore } from "@/stores/clients-store";
 
-export function LoginForm({
+export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"form">) {
   const router = useRouter();
-  const { setUsername, setID } = useUserStore();
-  const { loadClients } = useClientStore();
   const [showPw, setShowPw] = useState(false);
+  const [showPw2, setShowPw2] = useState(false);
 
   /* ─── submit handler ─── */
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formEl   = event.currentTarget;
-    const formData = new FormData(formEl);
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd   = new FormData(e.currentTarget);
+    const email = fd.get("email")    as string;
+    const pw    = fd.get("password") as string;
+    const pw2   = fd.get("confirm")  as string;
 
-    const email    = formData.get("email")    as string;
-    const password = formData.get("password") as string;
+    if (pw !== pw2) {
+      toast.error("Passwords do not match");
+      return;
+    }
 
     try {
-      const res  = await fetch("/api/manual-login", {
-        method: "POST",
-        body:   JSON.stringify({ email, password }),
-        headers:{ "Content-Type": "application/json" },
+      const res  = await fetch("/api/signup", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email, password: pw }),
       });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
 
-      const isJson = res.headers.get("content-type")?.includes("application/json");
-      const data   = isJson
-        ? await res.json()
-        : { success: false, message: "Unexpected server response." };
-
-      if (!data.success || !data.user) throw new Error(data.message || "Login failed");
-
-      setUsername(data.user.email);
-      setID(data.user.id);
-
-      try { await loadClients(); }
-      catch (err) {
-        console.error("[login-form] loadClients error", err);
-        toast.error("Could not load client data, but login succeeded.");
-      }
-
-      formEl.reset();
-      toast.success("Logged in successfully 🎉");
-      router.push("/clients-dashboard");
+      toast.success("Account created – please log in");
+      router.push("/login?new=1");
     } catch (err: any) {
-      toast.error(err.message || "Login failed");
-      console.error("[login-form] submit error:", err);
+      toast.error(err.message ?? "Sign‑up failed");
     }
   };
 
@@ -65,14 +51,14 @@ export function LoginForm({
   return (
     <form
       onSubmit={handleSubmit}
+      autoComplete="nope"
       className={cn("flex flex-col gap-6", className)}
-      autoComplete="off"
       {...props}
     >
       <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-2xl font-bold">Login to your account</h1>
+        <h1 className="text-2xl font-bold">Create your account</h1>
         <p className="text-muted-foreground text-sm text-balance">
-          Enter your username or email below
+          Enter your email below to get started
         </p>
       </div>
 
@@ -80,16 +66,7 @@ export function LoginForm({
         {/* Email */}
         <div className="grid gap-3">
           <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="text"
-            inputMode="email"
-            autoComplete="nope"
-            placeholder="name@example.com"
-            required
-            className="bg-white text-black dark:bg-white dark:text-black"
-          />
+          <Input id="email" name="email" type="email" required />
         </div>
 
         {/* Password */}
@@ -100,9 +77,8 @@ export function LoginForm({
               id="password"
               name="password"
               type={showPw ? "text" : "password"}
-              autoComplete="nope"
               required
-              placeholder="********"
+              autoComplete="nope"
             />
             <button
               type="button"
@@ -115,25 +91,47 @@ export function LoginForm({
           </div>
         </div>
 
-        {/* Login button */}
+        {/* Confirm Password */}
+        <div className="grid gap-3">
+          <Label htmlFor="confirm">Confirm Password</Label>
+          <div className="relative">
+            <Input
+              id="confirm"
+              name="confirm"
+              type={showPw2 ? "text" : "password"}
+              required
+              autoComplete="nope"
+            />
+            <button
+              type="button"
+              aria-label={showPw2 ? "Hide password" : "Show password"}
+              onClick={() => setShowPw2((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPw2 ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Primary action */}
         <Button type="submit" className="w-full">
-          Login
+          Sign up
         </Button>
 
         {/* Inline labeled separator */}
         <div className="flex items-center gap-2 text-gray-500 text-sm">
           <div className="h-px flex-1 bg-muted-foreground/20" />
-          Don&apos;t have an account?
+          or
           <div className="h-px flex-1 bg-muted-foreground/20" />
         </div>
 
-        {/* Sign‑up button (same style as Login) */}
+        {/* Secondary action: same style as primary */}
         <Button
           type="button"
           className="w-full"
-          onClick={() => router.push("/signup")}
+          onClick={() => router.push("/login")}
         >
-          Sign up
+          Back to Login
         </Button>
       </div>
     </form>
