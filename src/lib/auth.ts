@@ -22,10 +22,15 @@ function loadEnvUsers() {
 }
 const envUsers = loadEnvUsers();
 
+// src/lib/auth.ts (add at the top of the file)
+export type VerifyCredsResult =
+  | { ok: true; user: { id: string; email: string } }
+  | { ok: false; reason: "no_user" | "bad_pw" };
+
 /* ------------------------------------------------------------------ */
 /*  Verify login credentials                                          */
 /* ------------------------------------------------------------------ */
-export async function verifyCreds(email: string, pw: string) {
+export async function verifyCreds( email: string, pw: string,): Promise<VerifyCredsResult> {
   /* 1‑‑‑ Try the database first ------------------------------------ */
   try {
     const { rows } = await pool.query<
@@ -38,23 +43,30 @@ export async function verifyCreds(email: string, pw: string) {
       [email],
     );
 
-    if (rows.length) {
-      const ok = await bcrypt.compare(pw, rows[0].password_hash);
-      if (ok) return { id: rows[0].id.toString(), email };
+    if (!rows.length) {
+      return { ok: false, reason: "no_user" } as const;
     }
+
+    const ok = await bcrypt.compare(pw, rows[0].password_hash);
+    if (ok) {
+      return { ok: true, user: { id: rows[0].id.toString(), email } } as const;
+    }
+    return { ok: false, reason: "bad_pw" } as const;
   } catch (err) {
     console.error("[verifyCreds] DB error:", err);
     // fall through to env‑users; don’t throw so login still works offline
   }
 
   /* 2‑‑‑ Fallback to users defined in .env -------------------------- */
-  const u = envUsers.find((x) => x.email.toLowerCase() === email.toLowerCase());
-  if (u && (await bcrypt.compare(pw, u.password))) {
-    return { id: u.id, email: u.email };
-  }
+  const env = envUsers.find(
+    (x) => x.email.toLowerCase() === email.toLowerCase(),
+  );
+  if (!env) return { ok: false, reason: "no_user" } as const;
 
-  /* 3‑‑‑ Nothing matched                                             */
-  return null;
+  const ok = await bcrypt.compare(pw, env.password);
+  return ok
+    ? { ok: true, user: { id: env.id, email: env.email } }
+    : { ok: false, reason: "bad_pw" };
 }
 
 /* ------------------------------------------------------------------ */
