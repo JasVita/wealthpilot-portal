@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt  from "bcryptjs";
-import { pool } from "@/lib/db";
+import { getPool } from "@/lib/db";
 import { sendMail } from "@/lib/send-mail";
 
 export const runtime = "nodejs";          // ✅ ensure Node runtime
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const { email } = await req.json();
 
   // look up user; *always* pretend success to prevent enumeration
-  const { rows } = await pool.query<{ id: number }>(
+  const { rows } = await getPool().query<{ id: number }>(
     "SELECT id FROM public.users WHERE LOWER(username)=LOWER($1) LIMIT 1",
     [email],
   );
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const token = crypto.randomBytes(32).toString("hex");
   const hash  = await bcrypt.hash(token, 10);
 
-  await pool.query(
+  await getPool().query(
     `UPDATE public.users
         SET reset_token_hash=$1,
             reset_token_exp =now() + interval '1 hour',

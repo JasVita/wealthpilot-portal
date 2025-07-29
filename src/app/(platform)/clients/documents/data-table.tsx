@@ -164,7 +164,7 @@ export const DataTable = forwardRef<DataTableHandle, Props>(
             theme={myTheme}
             domLayout="autoHeight"
             animateRows
-            getRowId={(p) => p.data.name || String(p.rowIndex)}
+            getRowId={(p) => p.data.name}
             onGridReady={(e) => (gridApi.current = e.api)}
           />
         </div>

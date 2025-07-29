@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyCreds, VerifyCredsResult } from "@/lib/auth";
 import { signToken } from "@/lib/auth-token";
 
+export const dynamic = "force-dynamic"; 
 const isProd = process.env.NODE_ENV === "production";
 
 export async function POST(req: Request) {

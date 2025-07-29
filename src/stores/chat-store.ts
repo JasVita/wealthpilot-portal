@@ -72,7 +72,7 @@ export const useChatStore = create<ChatState>()(
         } catch (err) {
           console.error("Error sending message:", err);
           set((state) => ({
-            messages: [...state.messages, { content: "Error sending message", isUser: false }],
+            messages: [...state.messages, { content: "Error sending message, please try again.", isUser: false }],
             msgLoad: false,
           }));
         }
