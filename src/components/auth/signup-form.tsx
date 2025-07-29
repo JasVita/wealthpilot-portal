@@ -21,10 +21,10 @@ export function SignupForm({
   /* ─── submit handler ─── */
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd   = new FormData(e.currentTarget);
-    const email = fd.get("email")    as string;
-    const pw    = fd.get("password") as string;
-    const pw2   = fd.get("confirm")  as string;
+    const fd = new FormData(e.currentTarget);
+    const email = fd.get("email") as string;
+    const pw = fd.get("password") as string;
+    const pw2 = fd.get("confirm") as string;
 
     if (pw !== pw2) {
       toast.error("Passwords do not match");
@@ -32,10 +32,10 @@ export function SignupForm({
     }
 
     try {
-      const res  = await fetch("/api/signup", {
-        method:  "POST",
+      const res = await fetch("/api/signup", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email, password: pw }),
+        body: JSON.stringify({ email, password: pw }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.message);

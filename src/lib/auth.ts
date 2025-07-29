@@ -1,7 +1,11 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { pool } from "@/lib/db";
+import { pool } from "@/lib/db";
 
+/* ------------------------------------------------------------------ */
+/*  Signing key                                                       */
+/* ------------------------------------------------------------------ */
 /* ------------------------------------------------------------------ */
 /*  Signing key                                                       */
 /* ------------------------------------------------------------------ */
@@ -72,7 +76,14 @@ export async function verifyCreds( email: string, pw: string,): Promise<VerifyCr
 /* ------------------------------------------------------------------ */
 /*  JWT helpers (unchanged)                                           */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  JWT helpers (unchanged)                                           */
+/* ------------------------------------------------------------------ */
 export async function signToken(payload: { email: string }) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("7d")
+    .sign(key);
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("7d")
