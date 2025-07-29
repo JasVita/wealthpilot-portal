@@ -397,7 +397,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 // Handy “first match” getter – ignores null/undefined/empty   *
-export function pick<T>(obj: Record<string, any>, keys: string[]): T | undefined {
+ function pick<T>(obj: Record<string, any>, keys: string[]): T | undefined {
   for (const k of keys) {
     const v = obj[k];
     if (v !== undefined && v !== null && v !== "") return v as T;
@@ -407,7 +407,7 @@ export function pick<T>(obj: Record<string, any>, keys: string[]): T | undefined
 
 // Parse tenor / structure / underlying / coupon from 1‑liner  *
 
-export function parseStructuredProduct(descRaw = "") {
+ function parseStructuredProduct(descRaw = "") {
   const desc = descRaw.toUpperCase();
 
   const tenor = desc.match(/(\d{1,2}M)/)?.[1] ?? "—";
@@ -419,7 +419,7 @@ export function parseStructuredProduct(descRaw = "") {
 }
 
 // Very light “valuation” label: above / below / at par       *
-export function computeValuation(r: Record<string, any>): string {
+ function computeValuation(r: Record<string, any>): string {
   const cost = pick<number>(r, ["unit_cost_price", "ave_unit_cost", "Unit Cost Price"]);
   const last = pick<number>(r, ["unit_last_price", "market_price", "Unit Last Price"]);
   if (cost && last) {

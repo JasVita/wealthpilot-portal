@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { pool } from "@/lib/db";
+import { getPool } from "@/lib/db";
+
+export const dynamic = "force-dynamic";  
 
 export async function POST(req: Request) {
+  const pool = getPool();
   const { token, password } = await req.json();
   if (!token || !password)
     return NextResponse.json({ ok: false }, { status: 400 });

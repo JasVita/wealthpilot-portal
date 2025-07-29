@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
-import { pool } from "@/lib/db";
+import { getPool } from "@/lib/db";
 
 /* ------------------------------------------------------------------ */
 /*  Signing key                                                       */
@@ -25,13 +25,14 @@ const envUsers = loadEnvUsers();
 // src/lib/auth.ts (add at the top of the file)
 export type VerifyCredsResult =
   | { ok: true; user: { id: string; email: string } }
-  | { ok: false; reason: "no_user" | "bad_pw" };
+  | { ok: false; reason: "no_user" | "bad_pw" | "db_error" };
 
 /* ------------------------------------------------------------------ */
 /*  Verify login credentials                                          */
 /* ------------------------------------------------------------------ */
 export async function verifyCreds( email: string, pw: string,): Promise<VerifyCredsResult> {
   /* 1‑‑‑ Try the database first ------------------------------------ */
+  const pool = getPool();
   try {
     const { rows } = await pool.query<
       { id: number; password_hash: string }
@@ -93,6 +94,7 @@ export async function validateToken(token?: string) {
 /**  Create a new user (sign‑up)                                      */
 /** ------------------------------------------------------------------ */
 export async function createUser(email: string, pw: string) {
+  const pool = getPool();
   const { rows: exists } = await pool.query(
     "SELECT 1 FROM public.users WHERE username = $1",
     [email],
