@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +14,10 @@ export function SignupForm({
   ...props
 }: React.ComponentProps<"form">) {
   const router = useRouter();
+  const [showPw, setShowPw] = useState(false);
+  const [showPw2, setShowPw2] = useState(false);
 
+  /* ─── submit handler ─── */
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -41,9 +46,11 @@ export function SignupForm({
     }
   };
 
+  /* ─── render ─── */
   return (
     <form
       onSubmit={handleSubmit}
+      autoComplete="nope"
       className={cn("flex flex-col gap-6", className)}
       {...props}
     >
@@ -55,23 +62,75 @@ export function SignupForm({
       </div>
 
       <div className="grid gap-6">
+        {/* Email */}
         <div className="grid gap-3">
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" required />
         </div>
 
+        {/* Password */}
         <div className="grid gap-3">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" name="password" type="password" required />
+          <div className="relative">
+            <Input
+              id="password"
+              name="password"
+              type={showPw ? "text" : "password"}
+              required
+              autoComplete="nope"
+            />
+            <button
+              type="button"
+              aria-label={showPw ? "Hide password" : "Show password"}
+              onClick={() => setShowPw((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
 
+        {/* Confirm Password */}
         <div className="grid gap-3">
           <Label htmlFor="confirm">Confirm Password</Label>
-          <Input id="confirm" name="confirm" type="password" required />
+          <div className="relative">
+            <Input
+              id="confirm"
+              name="confirm"
+              type={showPw2 ? "text" : "password"}
+              required
+              autoComplete="nope"
+            />
+            <button
+              type="button"
+              aria-label={showPw2 ? "Hide password" : "Show password"}
+              onClick={() => setShowPw2((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPw2 ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
 
+        {/* Primary action */}
         <Button type="submit" className="w-full">
           Sign up
+        </Button>
+
+        {/* Inline labeled separator */}
+        <div className="flex items-center gap-2 text-gray-500 text-sm">
+          <div className="h-px flex-1 bg-muted-foreground/20" />
+          or
+          <div className="h-px flex-1 bg-muted-foreground/20" />
+        </div>
+
+        {/* Secondary action: same style as primary */}
+        <Button
+          type="button"
+          className="w-full"
+          onClick={() => router.push("/login")}
+        >
+          Back to Login
         </Button>
       </div>
     </form>

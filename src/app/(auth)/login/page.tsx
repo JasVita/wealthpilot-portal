@@ -1,7 +1,11 @@
+"use client";
+
 import { LoginForm } from "@/components/auth/login-form";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 export default function Page() {
+  const pathname = usePathname();
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       <div className="flex flex-col gap-4 p-6 md:p-10">
@@ -13,12 +17,14 @@ export default function Page() {
             Wealth Pilot
           </a>
         </div>
+
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <LoginForm />
+            <LoginForm key={pathname} />
           </div>
         </div>
       </div>
+
       <div className="bg-muted relative hidden lg:block">
         <img
           src="/login_cover.png"

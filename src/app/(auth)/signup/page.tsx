@@ -1,7 +1,11 @@
+"use client";
+
 import { SignupForm } from "@/components/auth/signup-form";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 export default function Page() {
+  const pathname = usePathname();          // ✅ now allowed
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       {/* -------- Left panel -------- */}
@@ -17,7 +21,7 @@ export default function Page() {
 
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <SignupForm />
+            <SignupForm key={pathname} />
           </div>
         </div>
       </div>
