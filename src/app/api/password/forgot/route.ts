@@ -3,6 +3,7 @@ import crypto from "crypto";
 import bcrypt  from "bcryptjs";
 import { getPool } from "@/lib/db";
 import { sendMail } from "@/lib/send-mail";
+import { resetPwTemplate }   from "@/lib/reset-pwd-templates";  
 
 export const runtime = "nodejs";          // ✅ ensure Node runtime
 export const dynamic = "force-dynamic";   // avoid static optimisation
@@ -30,15 +31,16 @@ export async function POST(req: Request) {
     [hash, rows[0].id],
   );
 
-  const link =
-    `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
+  const link = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
+  const { html, text }  = resetPwTemplate(link);
 
   await sendMail({
-    to: email,
-    subject: "Reset your Wealth Pilot password",
-    text:  `Click the link to reset: ${link}`,
-    html:  `<p>Click <a href="${link}">here</a> to reset your password.</p>`,
+    to:      email,
+    subject: "👋 Reset your Wealth Pilot password 🔐",
+    html,
+    text,
   });
 
+  /* 4 ── always pretend success */
   return NextResponse.json({ ok: true });
 }

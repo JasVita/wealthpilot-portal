@@ -27,7 +27,7 @@ export default function ForgotPasswordClient() {
         "If the account exists, a reset link has been sent to your inbox.",
       );
     } else {
-      toast.error("Something went wrong – please try again.");
+      toast.error("Something went wrong - please try again.");
     }
   }
 
@@ -62,8 +62,9 @@ export default function ForgotPasswordClient() {
 
             <Button
               type="button"
-              variant="ghost"
-              className="text-sm text-blue-600 underline-offset-4 hover:underline"
+              // variant="ghost"
+              // className="text-sm text-blue-600 underline-offset-4 hover:underline"
+              className="w-full"
               onClick={() => router.push("/login")}
             >
               Back to login
