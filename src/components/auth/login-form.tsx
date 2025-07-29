@@ -114,14 +114,14 @@ export function LoginForm({
             </button>
           </div>
           {/* prettier “Forgot password?” link */}
-          <div className="flex justify-end">
+          {/* <div className="flex justify-end">
             <a
               href="/forgot-password"
               className="text-xs text-gray-500 hover:text-blue-600 hover:underline transition-colors"
             >
               Forgot password?
             </a>
-          </div>
+          </div> */}
         </div>
 
         {/* Login button */}
