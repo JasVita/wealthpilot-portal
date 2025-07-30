@@ -29,7 +29,7 @@ export function sendMail(opts: {
 }
 
 /* ─── 3. (optional) one‑time self‑test on server boot ────────────── */
-if (process.env.NODE_ENV !== "test") {
+if (process.env.NODE_ENV !== "production") {
   // eslint‑disable‑next‑line no-console
   console.log("[mail] Verifying SMTP configuration…");
   transport
@@ -37,7 +37,5 @@ if (process.env.NODE_ENV !== "test") {
     .then(() => console.log("[mail] ✅  SMTP connection OK"))
     .catch((err) => {
       console.error("[mail] ❌  SMTP connection failed:", err);
-      // Fail fast in production – uncomment if you want the process to exit
-      // process.exit(1);
     });
 }

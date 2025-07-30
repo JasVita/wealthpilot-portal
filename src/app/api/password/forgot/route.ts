@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import bcrypt  from "bcryptjs";
+import bcrypt from "bcryptjs";
 import { getPool } from "@/lib/db";
 import { sendMail } from "@/lib/send-mail";
-import { resetPwTemplate }   from "@/lib/reset-pwd-templates";  
+import { resetPwTemplate } from "@/lib/reset-pwd-templates";
 
 export const runtime = "nodejs";          // ✅ ensure Node runtime
 export const dynamic = "force-dynamic";   // avoid static optimisation
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
   // create token (256‑bit) and hash
   const token = crypto.randomBytes(32).toString("hex");
-  const hash  = await bcrypt.hash(token, 10);
+  const hash = await bcrypt.hash(token, 10);
 
   await getPool().query(
     `UPDATE public.users
@@ -32,10 +32,10 @@ export async function POST(req: Request) {
   );
 
   const link = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
-  const { html, text }  = resetPwTemplate(link);
+  const { html, text } = resetPwTemplate(link);
 
   await sendMail({
-    to:      email,
+    to: email,
     subject: "👋 Reset your Wealth Pilot password 🔐",
     html,
     text,
