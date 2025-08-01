@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircleIcon } from "lucide-react";
+import { AlertCircleIcon, UsersRound } from "lucide-react";
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
@@ -13,6 +13,10 @@ import axios from "axios";
 
 import { useClientStore } from "@/stores/clients-store";
 import { DataTable } from "../documents/data-table";
+
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { Button } from "@/components/ui/button";
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title, ChartDataLabels);
 
@@ -66,6 +70,7 @@ export default function Page() {
 
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const chartRefs = useRef<Record<number, ChartJS | null>>({});
 
   /* ---------------------------------------------------- derived (memoised) */
   const current = useMemo(
@@ -96,6 +101,7 @@ export default function Page() {
       });
     });
     return acc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.table_data]);
 
   const pieDataSets = useMemo(() => {
@@ -113,12 +119,13 @@ export default function Page() {
     (async () => {
       setStatus("loading");
       try {
+        console.log("Fetching overview data for client:", currClient);
         const { data } = await axios.post<{
           status: string;
           overview_data: OverviewRow[];
           message: string;
         }>(`${process.env.NEXT_PUBLIC_API_URL}/overviews`, { client_id: currClient });
-
+        console.log("Overview data:", JSON.stringify(data.overview_data));
         if (data.status !== "ok") throw new Error(data.message);
         setOverviews(data.overview_data);
         if (data.overview_data.length) setSelectedDate(data.overview_data[0].month_date);
@@ -129,6 +136,82 @@ export default function Page() {
       }
     })();
   }, [currClient]);
+
+  const tableForPdf = useCallback(
+    (key: (typeof assetKeys)[number]) => {
+      // header row – feel free to re‑order / rename
+      const columns = ["Bank", "Name", "Currency", "Units", "Balance (USD)"];
+      const body = aggregatedTables[key].map((r) => [
+        r.bank,
+        r.name ?? "",
+        r.currency ?? "",
+        r.units ?? "",
+        fmtCurrency(r.balanceUsd ?? 0),
+      ]);
+      return { columns, body, title: assetLabels[key] };
+    },
+    [aggregatedTables]
+  );
+
+  const handleDownloadPdf = async () => {
+    if (!current) return;
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 40;
+
+    /* ------------ 1. Title */
+    doc.setFontSize(18).text("Client Overview", pageWidth / 2, y, { align: "center" });
+    y += 24;
+    doc.setFontSize(12).text(
+      `Reporting Month: ${new Date(current.month_date).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+      })}`,
+      pageWidth / 2,
+      y,
+      { align: "center" }
+    );
+    y += 32;
+
+    /* ------------ 2. Pie charts (as images) */
+    await Promise.all(
+      [0, 1, 2].map(async (idx) => {
+        const chart = chartRefs.current[idx];
+        if (!chart) return;
+        const img = chart.toBase64Image();
+        doc.addImage(img, "PNG", 45, y, pageWidth - 90, 180, undefined, "FAST");
+        y += 200;
+        if (idx === 1) {
+          // avoid spilling over the page
+          doc.addPage();
+          y = 40;
+        }
+      })
+    );
+
+    /* ------------ 3. Asset tables */
+    for (const key of assetKeys) {
+      const { columns, body, title } = tableForPdf(key);
+      if (!body.length) continue;
+
+      doc.addPage();
+      autoTable(doc, {
+        head: [columns],
+        body,
+        startY: 60,
+        margin: { left: 32, right: 32 },
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [40, 40, 40] },
+        didDrawPage: (d) => {
+          doc.setFontSize(14).text(title, 32, 40);
+        },
+      });
+    }
+
+    /* ------------ 4. Save */
+    doc.save("overview.pdf");
+  };
 
   /* --------------------------------------------------------- chart config */
   const pieOptions = {
@@ -154,7 +237,20 @@ export default function Page() {
     },
   };
 
-  if (status === "idle") return <></>;
+  if (status === "idle") {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <UsersRound className="h-10 w-10 text-muted-foreground" />
+
+        <h3 className="text-lg font-semibold">No client selected</h3>
+
+        <p className="max-w-md text-sm text-muted-foreground">
+          Choose an existing client from the sidebar&nbsp;— or create a new one to start uploading statements and
+          generating portfolio overviews.
+        </p>
+      </div>
+    );
+  }
 
   if (status === "loading")
     return (
@@ -190,8 +286,9 @@ export default function Page() {
 
   return (
     <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
-      {/* Month selector */}
-      <div className="self-start mb-2">
+      {/* top-level controls row */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-4">
+        {/* Month selector (left) */}
         <Select value={selectedDate ?? undefined} onValueChange={setSelectedDate}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Select month" />
@@ -199,11 +296,19 @@ export default function Page() {
           <SelectContent>
             {overviews.map((o) => (
               <SelectItem key={o.month_date} value={o.month_date}>
-                {new Date(o.month_date).toLocaleDateString("en-US", { year: "numeric", month: "short" })}
+                {new Date(o.month_date).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                })}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        {/* Download PDF (right) */}
+        <Button onClick={handleDownloadPdf} variant="outline" size="sm" className="sm:ml-auto">
+          Download PDF&nbsp;(Beta)
+        </Button>
       </div>
 
       {hasCharts ? (

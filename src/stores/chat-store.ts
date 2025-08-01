@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import axios from "axios";
 import { type Message } from "@/types";
 import { useClientStore } from "./clients-store";
+import { useUserStore } from "./user-store";
 
 interface ChatState {
   messages: Message[];
@@ -32,6 +33,7 @@ export const useChatStore = create<ChatState>()(
         const input = get().chatInput.trim();
         if (!input) return;
         const { currClient } = useClientStore.getState();
+        const { id } = useUserStore.getState();
 
         const userMessage: Message = {
           content: input,
@@ -52,6 +54,7 @@ export const useChatStore = create<ChatState>()(
           const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/ai-chat`, {
             user_input: input,
             client_id: currClient,
+            user_id: id,
           });
 
           const aiMessage: Message = {

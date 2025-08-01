@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { validateToken } from "@/lib/auth-token";  // ✅ Edge‑safe import
+import { validateToken } from "@/lib/auth-token"; // ✅ Edge‑safe import
 
 export async function middleware(req: NextRequest) {
   const token = req.cookies.get("auth")?.value;
   const user = await validateToken(token);
 
   // paths that should be reachable without auth
-  const isAuthPage =
-    req.nextUrl.pathname.startsWith("/login") ||
-    req.nextUrl.pathname.startsWith("/signup");
+  const isAuthPage = req.nextUrl.pathname.startsWith("/login") || req.nextUrl.pathname.startsWith("/signup");
 
   if (user && isAuthPage) {
     // Logged‑in users don’t need /login or /signup
@@ -43,5 +41,6 @@ export const config = {
     "/settings/:path*",
     "/sp-lifecycle/:path*",
     "/trade-retrocesson/:path*",
+    "/login",
   ],
 };
