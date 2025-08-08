@@ -17,6 +17,8 @@ import { Button } from "./ui/button";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useUserStore } from "@/stores/user-store";
+import { useClientStore } from "@/stores/clients-store";
+import { useChatStore } from "@/stores/chat-store";
 
 export function NavUser({
   user,
@@ -29,20 +31,24 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const { username, resetStore: resetUserStore } = useUserStore();
+  const { resetStore: resetClientStore } = useClientStore();
+  const { clearChat: resetChatStore } = useChatStore();
 
   const handleLogout = async () => {
     try {
       const res = await fetch("/api/logout", { method: "POST" });
 
       if (!res.ok) throw new Error("Failed to logout");
-
+      resetChatStore();
+      resetClientStore();
+      resetUserStore();
       toast.success("Logged out successfully");
       router.push("/login");
     } catch (err: any) {
       toast.error(err.message || "Logout failed");
     }
   };
-  const { username } = useUserStore();
 
   return (
     <SidebarMenu>

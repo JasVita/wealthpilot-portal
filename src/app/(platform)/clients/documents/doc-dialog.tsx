@@ -220,7 +220,7 @@ export default function DocDialog({
 
     return (
       <>
-        <h3 className="text-xl font-semibold text-center">{sectionTitle}</h3>
+        {root.tableOrder.length > 0 && <h3 className="text-xl font-semibold text-center">{sectionTitle}</h3>}
 
         {root.tableOrder.map((catKey) => {
           const cat = currentData[catKey] as SubTableGroup | TableBlock | undefined;

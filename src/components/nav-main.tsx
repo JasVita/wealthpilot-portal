@@ -1,5 +1,5 @@
 "use client";
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight, Lock, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -28,6 +28,7 @@ export function NavMain({
     }[];
   }[];
 }) {
+  const lockedTitles = ["CRM", "Fee & Billing", "Settings", "Trade Retrocession", "Compliance"] as const;
   return (
     <SidebarGroup>
       <SidebarMenu className="gap-2">
@@ -48,7 +49,10 @@ export function NavMain({
                       <SidebarMenuSubItem key={subItem.url}>
                         <Link href={subItem.url} className="w-full">
                           <SidebarMenuSubButton asChild>
-                            <span>{subItem.title}</span>
+                            <span className="flex items-center gap-1">
+                              {subItem.title}
+                              {lockedTitles.includes(subItem.title as any) && <Lock className="h-4 w-4 opacity-60" />}
+                            </span>
                           </SidebarMenuSubButton>
                         </Link>
                       </SidebarMenuSubItem>
@@ -63,6 +67,7 @@ export function NavMain({
                 <SidebarMenuButton tooltip={item.title} className="w-full justify-start">
                   {item.icon && <item.icon />}
                   <span>{item.title}</span>
+                  {lockedTitles.includes(item.title as any) && <Lock className="h-4 w-4 opacity-60" />}
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>

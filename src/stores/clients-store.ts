@@ -36,6 +36,7 @@ interface ClientState {
   deleteClient: (id: string) => void;
   updateClient: (id: string, partial: Partial<Omit<Client, "id">>) => void;
   loadClients: () => Promise<void>;
+  resetStore: () => void;
 }
 
 export const useClientStore = create<ClientState>()(
@@ -166,6 +167,16 @@ export const useClientStore = create<ClientState>()(
           }
           return { clients, order };
         });
+      },
+
+      resetStore: () => {
+        // 1) clear Zustand state in memory
+        set({ clients: {}, order: [], currClient: "" });
+
+        // 2) remove the persisted snapshot (safe for SSR)
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("clients-storage");
+        }
       },
     }),
     {

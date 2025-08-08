@@ -7,6 +7,7 @@ interface UserState {
 
   setUsername: (username: string) => void;
   setID: (id: string) => void;
+  resetStore: () => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -16,6 +17,15 @@ export const useUserStore = create<UserState>()(
       id: "",
       setUsername: (username) => set({ username }),
       setID: (id) => set({ id }),
+      resetStore: () => {
+        // 1) reset Zustand state
+        set({ username: "", id: "" });
+
+        // 2) remove persisted snapshot
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("user-storage");
+        }
+      },
     }),
     {
       name: "user-storage", // key for localStorage
