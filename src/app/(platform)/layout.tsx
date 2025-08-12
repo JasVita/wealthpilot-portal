@@ -1,5 +1,6 @@
 "use client";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation"; // ⬅️ NEW
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -25,6 +26,10 @@ import { toast } from "sonner";
 import { uploadFileToS3 } from "@/lib/s3Upload";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
+  const router = useRouter();                    // ⬅️ NEW
+  const pathname = usePathname();                // ⬅️ NEW
+  const isClientList = pathname === "/clients_clone"; // ⬅️ NEW
+
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
@@ -38,6 +43,11 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     failed: any[];
   }>({ done: 0, total: 0, state: "PENDING", failed: [] });
 
+  // ⬇️ If user lands on /clients_clone, clear any previous selection so the Select shows empty.
+  useEffect(() => {
+    if (isClientList && currClient) setCurrClient("");
+  }, [isClientList]); // (intentionally not depending on currClient to avoid loops)
+
   const isFinished = (state: string) =>
     state === "SUCCESS" || state === "PARTIAL_SUCCESS" || state === "FAILURE" || state === "REVOKED";
 
@@ -45,24 +55,16 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     const pollId = setInterval(async () => {
       try {
         const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/upload/${taskId}`);
-
-        // ⬆️ update store
-        setProgress({
-          done: data.done ?? 0,
-          total: numFlies,
-          state: data.state,
-          failed: data.failed ?? [],
-        });
+        setProgress({ done: data.done ?? 0, total: numFlies, state: data.state, failed: data.failed ?? [] });
 
         if (isFinished(data.state)) {
           clearInterval(pollId);
-
           if (data.state === "SUCCESS") {
             toast.success("Analysis completed! All files processed.");
             setStatus("success");
           } else if (data.state === "PARTIAL_SUCCESS") {
             toast.warning(`Finished with some errors – ${data.failed.length} of ${data.total} file(s) failed.`);
-            setStatus("warning"); // add a "warning" visual state if you like
+            setStatus("warning");
           } else {
             toast.error("Upload failed – please try again.");
             setStatus("error");
@@ -80,15 +82,10 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     if (!files.length) return alert("Please upload files first.");
     if (!currClient) return alert("Please select a client first.");
     setStatus("loading");
-
     try {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
-
-      const {
-        data: { task1_idnew },
-      } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, { fileUrls, client_id: currClient, user_id });
-
+      const { data: { task1_idnew } } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, { fileUrls, client_id: currClient, user_id });
       toast.info("Files uploaded. Analyzing...");
       setProgress({ done: 0, total: fileUrls.length, state: "PENDING", failed: [] });
       startPolling(task1_idnew, fileUrls.length);
@@ -102,13 +99,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  const addFiles = (newFiles: FileList) => {
-    setFiles((prev) => [...prev, ...Array.from(newFiles)]);
-  };
-
-  const removeFile = (name: string) => {
-    setFiles((prev) => prev.filter((file) => file.name !== name));
-  };
+  const addFiles = (newFiles: FileList) => setFiles((prev) => [...prev, ...Array.from(newFiles)]);
+  const removeFile = (name: string) => setFiles((prev) => prev.filter((file) => file.name !== name));
 
   return (
     <SidebarProvider>
@@ -119,7 +111,16 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             <span className="text-sm text-muted-foreground">Current client:</span>
-            <Select value={currClient} onValueChange={setCurrClient}>
+
+            <Select
+              // show placeholder on /clients_clone (empty), otherwise show the actual current client
+              value={isClientList ? undefined : (currClient || undefined)}
+              onValueChange={(val) => {
+                setCurrClient(val);
+                // if we're on the list, picking a value should go straight to the overview page
+                if (isClientList && val) router.push(`/clients_clone/${val}/overview`);
+              }}
+            >
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Select a client" />
               </SelectTrigger>
@@ -139,21 +140,10 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           {status === "loading" && (
             <div className="w-full mx-4">
               <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
-              <span className="text-xs text-muted-foreground">
-                {progress.done}/{progress.total}
-              </span>
+              <span className="text-xs text-muted-foreground">{progress.done}/{progress.total}</span>
             </div>
           )}
-          {/* {status === "loading" && (
-            <div className="w-40 ml-4">
-              <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
-              <span className="text-xs text-muted-foreground">
-                {progress.done}/{progress.total}
-              </span>
-            </div>
-          )} */}
 
-          {/* Upload Button Dialog */}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button
