@@ -12,6 +12,7 @@ import {
   Landmark, Building2, Signature, FolderOpenDot, IdCard, FileCheck2
 } from "lucide-react";
 import clsx from "clsx";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
 // ✅ use the shared mock data & type (no local DOCS anymore)
 import { MOCK_DOCS, Doc } from "@/lib/mock-docs";
@@ -126,7 +127,7 @@ export default function DocumentsPage({ params }: { params: { clientId: string }
 
   return (
     <div className="p-4">
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>

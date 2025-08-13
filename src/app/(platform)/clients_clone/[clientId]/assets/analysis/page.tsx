@@ -15,6 +15,7 @@ import {
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import { Doughnut, Bar } from "react-chartjs-2";
 import { useMemo } from "react";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
 /* ---------------- Chart.js setup ---------------- */
 ChartJS.register(
@@ -200,7 +201,7 @@ export default function AnalysisPage() {
   const renderAllocationTable = (title: string, rows: Row[]) => {
     const total = rows.reduce((a, r) => a + r.value, 0);
     return (
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader>
           <CardTitle className="text-base">{title}</CardTitle>
         </CardHeader>
@@ -239,7 +240,7 @@ export default function AnalysisPage() {
   return (
     <div className="flex flex-col gap-6">
       {/* Product Allocation (chart + table) */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader>
           <CardTitle>Product Allocation</CardTitle>
           <CardDescription>Distribution by asset class</CardDescription>
@@ -282,7 +283,7 @@ export default function AnalysisPage() {
       </Card>
 
       {/* TOP 10 */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader>
           <CardTitle>TOP 10</CardTitle>
           <CardDescription>Largest positions by portfolio weight</CardDescription>

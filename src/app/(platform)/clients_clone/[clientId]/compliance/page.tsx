@@ -34,6 +34,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; 
 
 type Tone = "default" | "success" | "warning";
 
@@ -206,14 +207,14 @@ export default function CompliancePage({ params }: { params: { clientId: string 
   return (
     <div className="p-4 space-y-6">
       {/* Top status chips */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 ${MOCK_UI(USE_MOCKS, { badge: false })}`}>
         <StatusRow title="KYC Status" value={seed.kycStatus!} tone="success" />
         <StatusRow title="AML Status" value={seed.amlStatus!} tone="warning" />
         <StatusRow title="Risk Assessment" value={seed.riskStatus!} tone="success" />
       </div>
 
       {/* Portfolio Risk Assessment */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="pb-3">
           <CardTitle>Portfolio Risk Assessment</CardTitle>
           <CardDescription>Current and historical assessments</CardDescription>

@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
   FileImage,
 } from "lucide-react";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
 /* ----------------------- Types & helpers ----------------------- */
 type StatementRow = {
@@ -141,7 +142,7 @@ export default function StatementPage() {
   };
 
   return (
-    <Card>
+    <Card className={MOCK_UI(USE_MOCKS)}>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle>Statement</CardTitle>

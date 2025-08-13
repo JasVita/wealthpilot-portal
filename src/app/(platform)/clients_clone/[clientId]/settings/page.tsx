@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Mail, Edit2 } from "lucide-react";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; 
 
 type TeamMember = { name: string; role: string; email: string };
 type Room = { name: string; active: boolean; members: number };
@@ -81,7 +82,7 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
   return (
     <div className="p-4 space-y-6">
       {/* Data Permission */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="flex items-center justify-between">
           <div>
             <CardTitle>Data Permission</CardTitle>
@@ -125,7 +126,7 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
       </Card>
 
       {/* Service Team */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="flex items-center justify-between">
           <div>
             <CardTitle>Service Team</CardTitle>
@@ -210,7 +211,7 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
       </Card>
 
       {/* App Setting */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="flex items-center justify-between">
           <CardTitle>APP Setting</CardTitle>
 
@@ -333,7 +334,7 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
       </Card>
 
       {/* Chat Rooms */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="flex items-center justify-between">
           <CardTitle>Chat Room Activated</CardTitle>
 
@@ -427,7 +428,7 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
       </Card>
 
       {/* SP RFQ Settings */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="flex items-center justify-between">
           <div>
             <CardTitle>SP RFQ Settings</CardTitle>

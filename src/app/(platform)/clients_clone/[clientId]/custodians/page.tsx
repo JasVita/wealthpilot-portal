@@ -1,11 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
+import { useParams } from "next/navigation";
 import { useClientStore } from "@/stores/clients-store";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Eye } from "lucide-react";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
 const MOCK_ACCOUNTS = [
   {
@@ -26,15 +41,18 @@ const MOCK_ACCOUNTS = [
   },
 ];
 
-export default function CustodiansPage({ params }: { params: { clientId: string } }) {
+export default function CustodiansPage() {
+  const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient } = useClientStore();
+
   useEffect(() => {
-    if (params.clientId) setCurrClient(params.clientId);
-  }, [params.clientId, setCurrClient]);
+    if (clientId) setCurrClient(clientId);
+  }, [clientId, setCurrClient]);
 
   return (
     <div className="p-4 space-y-6">
-      <Card>
+      {/* Card 1 - mark as mock */}
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader>
           <CardTitle>All Accounts By Client</CardTitle>
           <CardDescription>Primary and secondary custodian accounts</CardDescription>
@@ -62,8 +80,12 @@ export default function CustodiansPage({ params }: { params: { clientId: string 
                   <TableCell>{r.relationship}</TableCell>
                   <TableCell>{r.strategy}</TableCell>
                   <TableCell>{r.institution}</TableCell>
-                  <TableCell className="text-center"><Switch defaultChecked={i === 0} /></TableCell>
-                  <TableCell className="text-center"><Eye className="h-4 w-4" /></TableCell>
+                  <TableCell className="text-center">
+                    <Switch defaultChecked={i === 0} />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Eye className="h-4 w-4" />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -71,7 +93,8 @@ export default function CustodiansPage({ params }: { params: { clientId: string 
         </CardContent>
       </Card>
 
-      <Card>
+      {/* Card 2 - mark as mock */}
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader>
           <CardTitle>Associated Client Accounts</CardTitle>
         </CardHeader>

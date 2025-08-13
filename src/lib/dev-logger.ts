@@ -32,3 +32,9 @@ export function logRoute(route: string, payload: unknown, note?: string) {
   }
   console.groupEnd();
 }
+
+/** Drop this in className to gray-out mock UI */
+export const MOCK_UI = (
+  mock?: boolean,
+  opts: { badge?: boolean } = { badge: true }
+) => (mock ? `u-mock ${opts.badge ? "u-mock-badge" : ""}` : "");

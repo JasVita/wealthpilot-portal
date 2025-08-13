@@ -22,7 +22,7 @@ import {
   Filler,
   Legend,
 } from "chart.js";
-import { USE_MOCKS, logRoute, pill } from "@/lib/dev-logger";
+import { MOCK_UI, USE_MOCKS, logRoute, pill } from "@/lib/dev-logger";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ChartTitle, Tooltip, Filler, Legend);
 
@@ -285,7 +285,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className={MOCK_UI(USE_MOCKS)}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
                     <CardDescription>By asset bucket</CardDescription>

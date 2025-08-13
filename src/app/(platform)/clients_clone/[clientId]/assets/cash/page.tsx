@@ -16,6 +16,7 @@ import {
 } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import { Bar } from "react-chartjs-2";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, CJTitle, Tooltip, Legend, ChartDataLabels);
 
@@ -103,7 +104,7 @@ export default function CashPage() {
     );
 
   return (
-    <Card>
+    <Card className={MOCK_UI(USE_MOCKS)}>
       <CardHeader>
         <CardTitle>Cash Distribution</CardTitle>
         <CardDescription>By custodian and account</CardDescription>

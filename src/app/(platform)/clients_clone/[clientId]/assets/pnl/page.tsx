@@ -6,6 +6,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Bar } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from "chart.js";
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -140,7 +141,7 @@ function Metric({
   change: number;
 }) {
   return (
-    <Card>
+    <Card className={MOCK_UI(USE_MOCKS)}>
       <CardContent className="pt-4">
         <div className="text-xs text-muted-foreground">{title}</div>
         <div className="text-2xl font-semibold mt-1">{fmtCurrency(value)}</div>
@@ -162,7 +163,7 @@ export default function PnlPage() {
   return (
     <div className="flex flex-col gap-4">
       {/* Metric cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 ${MOCK_UI(USE_MOCKS, { badge: false })}`}>
         {METRICS.map((m) => (
           <Metric
             key={m.key}
@@ -175,7 +176,7 @@ export default function PnlPage() {
       </div>
 
       {/* Chart */}
-      <Card>
+      <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="pb-2 flex-row items-center justify-between">
           <div>
             <CardTitle className="text-lg">P&amp;L in USD (TWR)</CardTitle>
@@ -214,7 +215,7 @@ export default function PnlPage() {
       </Card>
 
       {/* Profit Distribution */}
-      <Card>
+      <Card  className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">
             Profit Distribution (2024-08 → 2025-08)
@@ -255,7 +256,7 @@ export default function PnlPage() {
       </Card>
 
       {/* Change in market value */}
-      <Card>
+      <Card  className={MOCK_UI(USE_MOCKS)}>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">
             Change in market valued in USD (2024-08 → 2025-08)
