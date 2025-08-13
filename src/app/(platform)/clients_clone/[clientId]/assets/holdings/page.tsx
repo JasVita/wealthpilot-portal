@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, useContext } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,8 +26,8 @@ import { DataTable } from "@/app/(platform)/clients_clone/documents/data-table";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Button } from "@/components/ui/button";
 import { logRoute, USE_MOCKS, pill } from "@/lib/dev-logger";
+import { AssetsExportContext } from "../layout"; // register export handler with layout
 
 ChartJS.register(
   ArcElement,
@@ -94,6 +94,7 @@ const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
 
 export default function HoldingsPage() {
   const { currClient } = useClientStore();
+  const registerExport = useContext(AssetsExportContext);
 
   const [overviews, setOverviews] = useState<OverviewRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
@@ -169,7 +170,8 @@ export default function HoldingsPage() {
     [aggregatedTables]
   );
 
-  const handleDownloadPdf = async () => {
+  /** Export PDF (same as before) */
+  const handleDownloadPdf = useCallback(async () => {
     if (!current) return;
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -225,7 +227,15 @@ export default function HoldingsPage() {
     }
 
     doc.save("assets.pdf");
-  };
+  }, [current, tableForPdf]);
+
+  /** Register / unregister the export handler with the layout */
+  useEffect(() => {
+    registerExport(() => {
+      void handleDownloadPdf();
+    });
+    return () => registerExport(undefined);
+  }, [registerExport, handleDownloadPdf]);
 
   const pieOptions = {
     responsive: true,
@@ -240,7 +250,7 @@ export default function HoldingsPage() {
       },
       datalabels: {
         color: "#fff",
-        font: { weight: "bold", size: 12 },
+        font: { weight: "bold" as const, size: 12 },
         formatter: (value: number, ctx: any) => {
           const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
           const pct = Math.round((value / total) * 100);
@@ -293,13 +303,6 @@ export default function HoldingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Tab-level controls */}
-      <div className="flex items-center justify-end">
-        <Button onClick={handleDownloadPdf} variant="outline" size="sm">
-          Export PDF
-        </Button>
-      </div>
-
       {/* Pie charts */}
       {hasCharts ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
