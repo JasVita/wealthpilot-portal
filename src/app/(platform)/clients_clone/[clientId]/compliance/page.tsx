@@ -34,7 +34,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog";
-import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; 
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger";
 
 type Tone = "default" | "success" | "warning";
 
@@ -112,7 +112,7 @@ export default function CompliancePage({ params }: { params: { clientId: string 
         if (!res.ok) return;
         const data = (await res.json()) as ComplianceMock;
         if (!cancelled) setMock(data);
-      } catch {}
+      } catch { }
     })();
     return () => { cancelled = true; };
   }, [params.clientId]);
@@ -245,9 +245,8 @@ export default function CompliancePage({ params }: { params: { clientId: string 
                   <div className="lg:col-span-2 space-y-3">
                     <div className="flex items-center gap-6">
                       <div
-                        className={`grid h-20 w-20 place-items-center rounded-lg border-2 text-3xl font-bold ${
-                          isActive ? "border-emerald-300 text-emerald-600" : "border-amber-300 text-amber-600"
-                        }`}
+                        className={`grid h-20 w-20 place-items-center rounded-lg border-2 text-3xl font-bold ${isActive ? "border-emerald-300 text-emerald-600" : "border-amber-300 text-amber-600"
+                          }`}
                         title="Risk Rating"
                       >
                         {r.rating}

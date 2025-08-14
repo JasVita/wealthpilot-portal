@@ -26,7 +26,6 @@ import { MOCK_UI, USE_MOCKS, logRoute, pill } from "@/lib/dev-logger";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ChartTitle, Tooltip, Filler, Legend);
 
-/** Context: sub-tabs (e.g. Holdings) register an Export handler here */
 export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
 
 const TABS = [
@@ -78,12 +77,7 @@ const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
 };
 
 const fmtCurrency = (v: number, digits = 0) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(v);
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
 
 const parseDate = (s: string) => new Date(s);
 
@@ -106,19 +100,15 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, currClient } = useClientStore();
 
-  // where sub-tabs register their export handler
   const [exporter, setExporter] = useState<(() => void) | undefined>(undefined);
-
-  // ✅ wrapper so we set a function value (not an updater)
   const registerExporter = useCallback((fn?: () => void) => {
-    setExporter(() => fn);   // store the function without invoking it
+    setExporter(() => fn);
   }, []);
 
   useEffect(() => {
     if (clientId) setCurrClient(clientId);
   }, [clientId, setCurrClient]);
 
-  // ---- Overview state (shared at top of every assets subtab) ----
   const [overviews, setOverviews] = useState<OverviewRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -129,33 +119,45 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       setStatus("loading");
       try {
         const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-        let payload: any;
+        let rows: OverviewRow[] = [];
+
         if (USE_MOCKS) {
-          const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
-          if (!res.ok) throw new Error(`mock not found: /mocks/overviews.${currClient}.json`);
-          payload = await res.json();
-          logRoute("/overviews (mock)", payload);
+          try {
+            const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
+            if (res.ok) {
+              const payload = await res.json();
+              logRoute("/overviews (mock)", payload);
+              rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
+            } else {
+              console.info(`[assets/layout] mock not found for client ${currClient}, showing empty state.`);
+            }
+          } catch {
+            console.info(`[assets/layout] mock fetch failed for client ${currClient}, showing empty state.`);
+          }
         } else {
-          const resp = await axios.post(route, { client_id: currClient });
-          payload = resp.data;
-          logRoute("/overviews", payload);
+          try {
+            const resp = await axios.post(route, { client_id: currClient });
+            const payload = resp.data;
+            logRoute("/overviews", payload);
+            rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
+          } catch (e: any) {
+            console.warn("[assets/layout] live fetch failed; showing empty state", e?.message || e);
+          }
         }
-        const rows: OverviewRow[] = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-        if (!rows.length) throw new Error("No overview data");
-        setOverviews(rows);
+
+        setOverviews(rows || []);
         setStatus("ready");
         console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
       } catch (err: any) {
-        setErrorMsg(err?.response?.data?.message || err.message || "Unknown error");
-        setStatus("error");
+        setErrorMsg(err?.message || "Unknown error");
+        setOverviews([]);
+        setStatus("ready"); // still render; cards will show "—"/empty
       }
     })();
   }, [currClient]);
 
-  // pick the latest month (first row of API)
   const current = overviews[0];
 
-  // aggregate rows for KPI + chips
   const aggregatedTables = useMemo(() => {
     const acc: Record<string, any[]> = Object.fromEntries(assetKeys.map((k) => [k, []]));
     (current?.table_data?.tableData ?? []).forEach((bank: any) => {
@@ -176,14 +178,12 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     let liabilitiesAbs = 0;
     for (const r of rows) {
       const v = Number((r as any)?.balanceUsd ?? 0);
-      if (Number.isFinite(v)) {
-        if (v >= 0) assets += v;
-        else liabilitiesAbs += -v;
-      }
+      if (!Number.isFinite(v)) continue;
+      if (v >= 0) assets += v;
+      else liabilitiesAbs += -v;
     }
     const net = assets - liabilitiesAbs;
-    const aumFromPie =
-      (current?.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || undefined;
+    const aumFromPie = (current?.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || undefined;
     return { assets, liabilities: liabilitiesAbs, netAssets: net, aumFromPie };
   }, [aggregatedTables, current]);
 
@@ -198,16 +198,9 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const trend = useMemo(() => {
     if (!overviews.length) return null;
     const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
-    const labels = sorted.map((o) =>
-      new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
-    );
-    const data = sorted.map(
-      (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
-    );
-    return {
-      labels,
-      datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }],
-    };
+    const labels = sorted.map((o) => new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" }));
+    const data = sorted.map((o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0);
+    return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
   }, [overviews]);
 
   const lineOptions = {
@@ -222,16 +215,10 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   return (
     <AssetsExportContext.Provider value={registerExporter}>
       <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
-        {/* ---- Overview (always visible on top of every assets sub-tab) ---- */}
         <div className="mt-2">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-2xl font-bold">Overview</div>
-            <Button
-              onClick={() => exporter?.()}
-              variant="outline"
-              size="sm"
-              disabled={!exporter}
-            >
+            <Button onClick={() => exporter?.()} variant="outline" size="sm" disabled={!exporter}>
               Export PDF
             </Button>
           </div>
@@ -247,29 +234,15 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
             </div>
           )}
 
-          {status === "error" && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircleIcon className="h-5 w-5" />
-              <AlertTitle>Unable to load assets</AlertTitle>
-              <AlertDescription>{errorMsg}</AlertDescription>
-            </Alert>
-          )}
-
           {status === "ready" && (
             <>
-              {/* KPI cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <Kpi title="Total Assets" value={fmtCurrency(kpis.assets)} caption="Gross long positions" />
                 <Kpi title="Total Liabilities" value={fmtCurrency(kpis.liabilities)} caption="Loans & short values" />
                 <Kpi title="Net Assets" value={fmtCurrency(kpis.netAssets)} caption="Assets − Liabilities" />
-                <Kpi
-                  title="AUM (from banks)"
-                  value={kpis.aumFromPie ? fmtCurrency(kpis.aumFromPie) : "—"}
-                  caption="Sum of bank exposure"
-                />
+                <Kpi title="AUM (from banks)" value={kpis.aumFromPie ? fmtCurrency(kpis.aumFromPie) : "—"} caption="Sum of bank exposure" />
               </div>
 
-              {/* Trend + quick breakdown chips */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="lg:col-span-2">
                   <CardHeader className="pb-2">
@@ -277,11 +250,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                     <CardDescription>Net assets over reporting periods</CardDescription>
                   </CardHeader>
                   <CardContent className="h-[260px]">
-                    {trend ? (
-                      <Line data={trend} options={lineOptions} />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No history</div>
-                    )}
+                    {trend ? <Line data={trend} options={lineOptions} /> : <div className="text-sm text-muted-foreground">No history</div>}
                   </CardContent>
                 </Card>
 
@@ -307,9 +276,17 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
               </div>
             </>
           )}
+
+          {/* Optional: if you still want to surface unexpected errors */}
+          {status === "ready" && !overviews.length && errorMsg && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertCircleIcon className="h-5 w-5" />
+              <AlertTitle>Note</AlertTitle>
+              <AlertDescription>{errorMsg}</AlertDescription>
+            </Alert>
+          )}
         </div>
 
-        {/* ---- Sub-tab ribbon (matches top ribbon styling) ---- */}
         <div className="grid w-full grid-cols-1 sm:grid-cols-6 rounded-lg border bg-muted/40">
           {TABS.map((t) => {
             const href = `${base}/${t.slug}`;
@@ -329,7 +306,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           })}
         </div>
 
-        {/* ---- Page content for each sub-tab ---- */}
         <div>{children}</div>
       </div>
     </AssetsExportContext.Provider>

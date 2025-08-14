@@ -20,14 +20,12 @@ import {
 } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import axios from "axios";
-
 import { useClientStore } from "@/stores/clients-store";
 import { DataTable } from "@/app/(platform)/clients_clone/documents/data-table";
-
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { logRoute, USE_MOCKS, pill } from "@/lib/dev-logger";
-import { AssetsExportContext } from "../layout"; // register export handler with layout
+import { AssetsExportContext } from "../layout";
 
 ChartJS.register(
   ArcElement,
@@ -73,12 +71,7 @@ const assetLabels: Record<(typeof assetKeys)[number], string> = {
 };
 
 const fmtCurrency = (v: number, digits = 0) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(v);
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
 
 /** map backend aliases -> canonical keys */
 const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
@@ -132,25 +125,42 @@ export default function HoldingsPage() {
       setStatus("loading");
       try {
         const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-        let payload: any;
+        let rows: OverviewRow[] = [];
+
         if (USE_MOCKS) {
-          const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
-          if (!res.ok) throw new Error(`mock not found: /mocks/overviews.${currClient}.json`);
-          payload = await res.json();
-          logRoute("/overviews (mock)", payload);
+          // Try mock; if missing, don't throw—just fall through to empty/live
+          try {
+            const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
+            if (res.ok) {
+              const payload = await res.json();
+              logRoute("/overviews (mock)", payload);
+              rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
+            } else {
+              console.info(`[assets] mock not found for client ${currClient}, showing empty state.`);
+            }
+          } catch {
+            console.info(`[assets] mock fetch failed for client ${currClient}, showing empty state.`);
+          }
         } else {
-          const resp = await axios.post(route, { client_id: currClient });
-          payload = resp.data;
-          logRoute("/overviews", payload);
+          // Live
+          try {
+            const resp = await axios.post(route, { client_id: currClient });
+            const payload = resp.data;
+            logRoute("/overviews", payload);
+            rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
+          } catch (e: any) {
+            console.warn("[assets] live fetch failed; showing empty state", e?.message || e);
+          }
         }
-        const rows: OverviewRow[] = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-        if (!rows.length) throw new Error("No overview data");
-        setOverviews(rows);
+
+        setOverviews(rows || []);
         setStatus("ready");
         console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
       } catch (err: any) {
-        setErrorMsg(err?.response?.data?.message || err.message || "Unknown error");
-        setStatus("error");
+        // Only use "error" for truly unexpected conditions
+        setErrorMsg(err?.message || "Unknown error");
+        setOverviews([]);
+        setStatus("ready"); // still render, will show 'no data' state
       }
     })();
   }, [currClient]);
@@ -158,7 +168,7 @@ export default function HoldingsPage() {
   const tableForPdf = useCallback(
     (key: (typeof assetKeys)[number]) => {
       const columns = ["Bank", "Name", "Currency", "Units", "Balance (USD)"];
-      const body = aggregatedTables[key].map((r) => [
+      const body = (aggregatedTables[key] ?? []).map((r) => [
         (r as any).bank,
         (r as any).name ?? "",
         (r as any).currency ?? "",
@@ -170,7 +180,6 @@ export default function HoldingsPage() {
     [aggregatedTables]
   );
 
-  /** Export PDF (same as before) */
   const handleDownloadPdf = useCallback(async () => {
     if (!current) return;
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
@@ -182,17 +191,13 @@ export default function HoldingsPage() {
     doc
       .setFontSize(12)
       .text(
-        `Reporting Month: ${new Date(current.month_date).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-        })}`,
+        `Reporting Month: ${new Date(current.month_date).toLocaleDateString("en-US", { year: "numeric", month: "long" })}`,
         pageWidth / 2,
         y,
         { align: "center" }
       );
     y += 32;
 
-    // include the three pie charts
     await Promise.all(
       [0, 1, 2].map(async (idx) => {
         const chart = chartRefs.current[idx];
@@ -208,7 +213,6 @@ export default function HoldingsPage() {
       })
     );
 
-    // add all holdings tables
     for (const key of assetKeys) {
       const { columns, body, title } = tableForPdf(key);
       if (!body.length) continue;
@@ -229,7 +233,6 @@ export default function HoldingsPage() {
     doc.save("assets.pdf");
   }, [current, tableForPdf]);
 
-  /** Register / unregister the export handler with the layout */
   useEffect(() => {
     registerExport(() => {
       void handleDownloadPdf();
@@ -273,7 +276,7 @@ export default function HoldingsPage() {
     );
   }
 
-  if (status === "loading")
+  if (status === "loading") {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
         {Array.from({ length: 3 }).map((_, i) => (
@@ -284,26 +287,17 @@ export default function HoldingsPage() {
         ))}
       </div>
     );
+  }
 
-  if (status === "error")
-    return (
-      <div className="p-6">
-        <Alert variant="destructive">
-          <AlertCircleIcon className="h-5 w-5" />
-          <AlertTitle>Unable to load assets</AlertTitle>
-          <AlertDescription>{errorMsg}</AlertDescription>
-        </Alert>
-      </div>
-    );
-
-  if (!overviews.length)
+  // We purposely don't show an error block for "no data"
+  if (!overviews.length) {
     return <p className="p-6 text-muted-foreground">No consolidated data found for this client yet.</p>;
+  }
 
   const hasCharts = pieDataSets.length === 3;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Pie charts */}
       {hasCharts ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[
@@ -318,31 +312,23 @@ export default function HoldingsPage() {
               </CardHeader>
               <CardContent className="pt-0 flex flex-row h-[350px]">
                 <Pie
-                  // keep a reference for PDF export
                   // @ts-ignore
                   ref={(el) => (chartRefs.current[idx] = el)}
                   className="w-full h-full"
                   data={data}
-                  options={{
-                    ...pieOptions,
-                    // @ts-ignore – Chart.js types
-                    plugins: { ...pieOptions.plugins, title: { display: true, text: label } },
-                  }}
+                  options={{ ...pieOptions, /* @ts-ignore */ plugins: { ...pieOptions.plugins, title: { display: true, text: label } } }}
                 />
               </CardContent>
             </Card>
           ))}
         </div>
       ) : (
-        <div className="text-muted-foreground text-center text-sm mt-10">
-          No data available. Please upload documents.
-        </div>
+        <div className="text-muted-foreground text-center text-sm mt-10">No data available. Please upload documents.</div>
       )}
 
-      {/* Holdings tables */}
       <div className="space-y-8">
         {assetKeys.map((k) =>
-          aggregatedTables[k].length ? (
+          (aggregatedTables[k] ?? []).length ? (
             <DataTable
               key={k}
               title={assetLabels[k]}
