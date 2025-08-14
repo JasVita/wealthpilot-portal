@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Mail, Edit2 } from "lucide-react";
-import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; 
+import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger";
 
 type TeamMember = { name: string; role: string; email: string };
 type Room = { name: string; active: boolean; members: number };
@@ -54,8 +54,8 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
   const summary = clients[params.clientId]?.summary ?? {};
   const [app, setApp] = useState({
     active: true,
-    loginName: "min.li@easyview.com.hk",
-    loginEmail: "min.li@easyview.com.hk",
+    loginName: "nick.wong@turoid.ai",
+    loginEmail: "nick.wong@turoid.ai",
     lastLogin: "2025-07-29 18:45:32",
     version: "1.4.3",
     ip: "--",
