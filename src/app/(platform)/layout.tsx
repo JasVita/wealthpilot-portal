@@ -1,6 +1,8 @@
+// src/app/(platform)/layout.tsx
 "use client";
+
 import { ReactNode, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation"; // ⬅️ NEW
+import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -26,9 +28,8 @@ import { toast } from "sonner";
 import { uploadFileToS3 } from "@/lib/s3Upload";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
-  const router = useRouter();                    // ⬅️ NEW
-  const pathname = usePathname();                // ⬅️ NEW
-  const isClientList = pathname === "/clients_clone"; // ⬅️ NEW
+  const router = useRouter();
+  const pathname = usePathname();
 
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
@@ -36,6 +37,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const { clearStorage } = useWealthStore();
   const { clients, order, currClient, setCurrClient, loadClients } = useClientStore();
   const { id: user_id } = useUserStore();
+
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -43,11 +45,30 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     failed: any[];
   }>({ done: 0, total: 0, state: "PENDING", failed: [] });
 
-  // ⬇️ If user lands on /clients_clone, clear any previous selection so the Select shows empty.
-  useEffect(() => {
-    if (isClientList && currClient) setCurrClient("");
-  }, [isClientList]); // (intentionally not depending on currClient to avoid loops)
+  /* ──────────────────────────────────────────────────────────────
+   * Route change when user picks a different client
+   *  - If already under /clients_clone/[id]/..., replace the [id] segment
+   *  - Else navigate to /clients_clone/<id>/assets/holdings
+   *  - Always keep store in sync
+   * ────────────────────────────────────────────────────────────── */
+  function handleClientChange(nextId: string) {
+    setCurrClient(nextId);
 
+    if (pathname?.startsWith("/clients_clone/")) {
+      const parts = pathname.split("/"); // ["", "clients_clone", "<id>", ...]
+      if (parts.length >= 3) {
+        parts[2] = nextId; // swap the [clientId] segment
+        router.push(parts.join("/"));
+        return;
+      }
+    }
+
+    router.push(`/clients_clone/${nextId}/assets/holdings`);
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+   * Upload pipeline (unchanged)
+   * ────────────────────────────────────────────────────────────── */
   const isFinished = (state: string) =>
     state === "SUCCESS" || state === "PARTIAL_SUCCESS" || state === "FAILURE" || state === "REVOKED";
 
@@ -55,10 +76,17 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     const pollId = setInterval(async () => {
       try {
         const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/upload/${taskId}`);
-        setProgress({ done: data.done ?? 0, total: numFlies, state: data.state, failed: data.failed ?? [] });
+
+        setProgress({
+          done: data.done ?? 0,
+          total: numFlies,
+          state: data.state,
+          failed: data.failed ?? [],
+        });
 
         if (isFinished(data.state)) {
           clearInterval(pollId);
+
           if (data.state === "SUCCESS") {
             toast.success("Analysis completed! All files processed.");
             setStatus("success");
@@ -75,17 +103,24 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         toast.error("Network error while checking progress.");
         setStatus("error");
       }
-    }, 60000);
+    }, 60_000);
   };
 
   const handleUpload = async (files: File[]) => {
     if (!files.length) return alert("Please upload files first.");
     if (!currClient) return alert("Please select a client first.");
     setStatus("loading");
+
     try {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
-      const { data: { task1_idnew } } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, { fileUrls, client_id: currClient, user_id });
+
+      const { data: { task1_idnew } } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, {
+        fileUrls,
+        client_id: currClient,
+        user_id,
+      });
+
       toast.info("Files uploaded. Analyzing...");
       setProgress({ done: 0, total: fileUrls.length, state: "PENDING", failed: [] });
       startPolling(task1_idnew, fileUrls.length);
@@ -112,15 +147,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             <span className="text-sm text-muted-foreground">Current client:</span>
 
-            <Select
-              // show placeholder on /clients_clone (empty), otherwise show the actual current client
-              value={isClientList ? undefined : (currClient || undefined)}
-              onValueChange={(val) => {
-                setCurrClient(val);
-                // if we're on the list, picking a value should go straight to the overview page
-                if (isClientList && val) router.push(`/clients_clone/${val}/overview`);
-              }}
-            >
+            {/* Controlled select: whatever is in the store drives the UI */}
+            <Select value={currClient ?? undefined} onValueChange={handleClientChange}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Select a client" />
               </SelectTrigger>
@@ -129,7 +157,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                   <SelectLabel>Clients</SelectLabel>
                   {order.map((id) => (
                     <SelectItem key={id} value={id}>
-                      {clients[id]?.name}
+                      {clients[id]?.name ?? id}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -140,10 +168,13 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           {status === "loading" && (
             <div className="w-full mx-4">
               <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
-              <span className="text-xs text-muted-foreground">{progress.done}/{progress.total}</span>
+              <span className="text-xs text-muted-foreground">
+                {progress.done}/{progress.total}
+              </span>
             </div>
           )}
 
+          {/* Upload dialog (unchanged) */}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button
@@ -181,6 +212,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           </Dialog>
         </header>
 
+        {/* Main content (scrollable; uses the light scrollbars you added) */}
         <main className="h-[calc(100vh-64px)] overflow-auto">{children}</main>
       </SidebarInset>
     </SidebarProvider>

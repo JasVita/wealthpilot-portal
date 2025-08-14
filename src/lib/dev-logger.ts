@@ -1,6 +1,6 @@
 // client/src/lib/dev-logger.ts
-export const DEV_LOG = typeof window !== "undefined" && process.env.NEXT_PUBLIC_DEV_LOG === "1";
-export const USE_MOCKS = typeof window !== "undefined" && process.env.NEXT_PUBLIC_USE_MOCKS === "1";
+export const DEV_LOG   = process.env.NEXT_PUBLIC_DEV_LOG === "1";
+export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "1";
 
 // A cute badge for console
 export const pill = (text: string, bg = "#334155") =>

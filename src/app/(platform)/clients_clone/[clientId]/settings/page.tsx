@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";   
 import { useClientStore } from "@/stores/clients-store";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -35,12 +36,13 @@ const DEFAULT_TEAM: TeamMember[] = [
   { name: "Bob Wilson", role: "Operations", email: "bob@company.com" },
 ];
 
-export default function ClientSettingsPage({ params }: { params: { clientId: string } }) {
+export default function ClientSettingsPage() {
+  const { clientId } = useParams<{ clientId: string }>();   // ← read id here
   const { setCurrClient, clients } = useClientStore();
 
   useEffect(() => {
-    if (params.clientId) setCurrClient(params.clientId);
-  }, [params.clientId, setCurrClient]);
+    if (clientId) setCurrClient(clientId);
+  }, [clientId, setCurrClient]);
 
   // ----- Data Permission -----
   const [features, setFeatures] = useState<string[]>(FEATURE_LIST);
@@ -51,7 +53,7 @@ export default function ClientSettingsPage({ params }: { params: { clientId: str
   const [team, setTeam] = useState<TeamMember[]>(DEFAULT_TEAM);
 
   // ----- App Settings -----
-  const summary = clients[params.clientId]?.summary ?? {};
+  const summary = clientId ? (clients[clientId]?.summary ?? {}) : {};
   const [app, setApp] = useState({
     active: true,
     loginName: "nick.wong@turoid.ai",
