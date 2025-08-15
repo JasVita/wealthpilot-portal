@@ -37,7 +37,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   Filler,
-  ChartDataLabels
+  // ChartDataLabels
 );
 
 interface OverviewRow {
@@ -111,13 +111,31 @@ export default function HoldingsPage() {
     return acc;
   }, [current?.table_data]);
 
+  // build pie datasets defensively
   const pieDataSets = useMemo(() => {
-    if (!current) return [];
-    return current.pie_chart_data.charts.map((c) => ({
-      labels: c.labels,
-      datasets: [{ data: c.data, backgroundColor: c.colors, borderWidth: 0 }],
-    }));
-  }, [current]);
+    if (!current?.pie_chart_data?.charts) return [];
+
+    return current.pie_chart_data.charts.map((c: any) => {
+      const data: number[] = Array.isArray(c?.data) ? c.data : [];
+      const colors: string[] = Array.isArray(c?.colors) ? c.colors : [];
+      // ensure labels exist and match data length
+      const labels: string[] =
+        Array.isArray(c?.labels) && c.labels.length === data.length
+          ? c.labels
+          : data.map((_, i) => `Item ${i + 1}`);
+
+      return {
+        labels,
+        datasets: [
+          {
+            data,
+            backgroundColor: colors.length === data.length ? colors : undefined,
+            borderWidth: 0,
+          },
+        ],
+      };
+    });
+  }, [current?.pie_chart_data]);
 
   useEffect(() => {
     if (!currClient) return;
@@ -311,14 +329,36 @@ export default function HoldingsPage() {
                 <CardDescription>{desc}</CardDescription>
               </CardHeader>
               <CardContent className="pt-0 flex flex-row h-[350px]">
-                <Pie
-                  // @ts-ignore
-                  ref={(el) => (chartRefs.current[idx] = el)}
-                  className="w-full h-full"
-                  data={data}
-                  options={{ ...pieOptions, /* @ts-ignore */ plugins: { ...pieOptions.plugins, title: { display: true, text: label } } }}
-                />
+                {(() => {
+                  const ds = data?.datasets?.[0]?.data ?? [];
+                  const hasValidData =
+                    Array.isArray(ds) && ds.length > 0 &&
+                    Array.isArray(data?.labels) && data.labels.length === ds.length;
+
+                  return (
+                    <Pie
+                      // @ts-ignore
+                      ref={(el) => (chartRefs.current[idx] = el)}
+                      className="w-full h-full"
+                      data={data}
+                      options={{
+                        ...pieOptions,
+                        plugins: {
+                          ...pieOptions.plugins,
+                          title: { display: true, text: label },
+                          // optional: you can also guard inside options
+                          datalabels: {
+                            ...(pieOptions.plugins?.datalabels as any),
+                            display: hasValidData,      // show labels only when valid
+                          },
+                        },
+                      }}
+                      plugins={hasValidData ? [ChartDataLabels] : []}  // ✅ attach plugin only when safe
+                    />
+                  );
+                })()}
               </CardContent>
+
             </Card>
           ))}
         </div>

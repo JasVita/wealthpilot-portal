@@ -1,8 +1,12 @@
 import { redirect } from "next/navigation";
+import { use } from "react";
 
-export default function Page({ params }: { params: { clientId: string } }) {
-  // Default /assets goes straight to /assets/holdings
-  redirect(`/clients_clone/${params.clientId}/assets/holdings`);
+/**
+ * /clients_clone/[clientId]/assets  →  /clients_clone/[clientId]/assets/holdings
+ */
+export default function Page(props: { params: Promise<{ clientId: string }> }) {
+  const { clientId } = use(props.params);
+  redirect(`/clients_clone/${clientId}/assets/holdings`);
 }
 
 // "use client";
