@@ -7,11 +7,10 @@ import { useClientStore } from "@/stores/clients-store";
 
 export default function ClientLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const segment = useSelectedLayoutSegment(); // 'profile' | 'custodians' | 'assets' | 'compliance' | 'documents' | 'settings'
+  const segment = useSelectedLayoutSegment();
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, clients } = useClientStore();
 
-  // keep global "Current client" in sync with the URL id
   useEffect(() => {
     if (clientId) setCurrClient(clientId);
   }, [clientId, setCurrClient]);
@@ -19,7 +18,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
   const tabs = [
     { slug: "profile", label: "Profile" },
     { slug: "custodians", label: "Custodians" },
-    { slug: "assets", label: "Assets" }, // renamed from "overview"
+    { slug: "assets", label: "Assets" },
     { slug: "compliance", label: "Compliance" },
     { slug: "documents", label: "Documents" },
     { slug: "settings", label: "Client Settings" },
@@ -27,13 +26,12 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
 
   const base = `/clients_clone/${clientId ?? ""}`;
   const active = (segment ?? "assets") as (typeof tabs)[number]["slug"];
-  const displayName = clientId ? (clients[clientId]?.name ?? clientId) : "";
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tabs header */}
-      <div className="px-4 pt-3 pb-2">
-        <div className="flex flex-wrap gap-2">
+      {/* Sticky TOP ribbon (no extra bottom spacing) */}
+      <div className="sticky top-0 z-40 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b">
+        <div className="px-4 pt-3 pb-0"> {/* ⬅ pb-0: remove bottom padding */}
           <Tabs
             value={active}
             onValueChange={(val) => {

@@ -5,6 +5,8 @@ import { usePathname, useParams } from "next/navigation";
 import { useEffect, useMemo, useState, createContext, useCallback, useRef } from "react";
 import axios from "axios";
 import { useClientStore } from "@/stores/clients-store";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -114,6 +116,7 @@ function Kpi({ title, value, caption }: { title: string; value: string; caption?
 }
 
 export default function AssetsLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter(); 
   const pathname = usePathname();
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, currClient } = useClientStore();
@@ -487,27 +490,29 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         )}
       </div>
 
-      {/* ---- Sub-tab ribbon (matches top ribbon styling) ---- */}
-      <div className="grid w-full grid-cols-1 sm:grid-cols-6 rounded-lg border bg-muted/40">
-        {TABS.map((t) => {
-          const href = `${base}/${t.slug}`;
-          const active = pathname?.startsWith(href);
-          return (
-            <Link
-              key={t.slug}
-              href={href}
-              className={[
-                "text-center m-1 rounded-md py-2 text-sm transition",
-                active ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
+      {/* ── Sticky sub-tabs (locks like the top “Profile / Custodians / …” ribbon) ── */}
+      <div className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px" style={{ top: -15 }}>
+        <div className="px-4">
+          <Tabs
+            value={(pathname?.split("/").at(-1) as string) ?? "holdings"}
+            onValueChange={(sub) => {
+              const base = `/clients_clone/${clientId ?? ""}/assets`;
+              router.push(`${base}/${sub}`);
+            }}
+            className="w-full"
+          >
+            <TabsList className="grid w-full sm:w-auto sm:inline-grid grid-cols-2 sm:grid-cols-6">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.slug} value={t.slug}>
+                  {t.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
-      {/* ---- Page content for each sub-tab ---- */}
+      {/* Page content under the sticky ribbons */}
       <div>{children}</div>
     </div>
     // </AssetsExportContext.Provider>
