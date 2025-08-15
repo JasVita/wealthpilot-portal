@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
-import { useEffect, useMemo, useState, createContext, useCallback } from "react";
+import { useEffect, useMemo, useState, createContext, useCallback, useRef } from "react";
 import axios from "axios";
 import { useClientStore } from "@/stores/clients-store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Line } from "react-chartjs-2";
+import { Line, Pie } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -21,10 +21,23 @@ import {
   Tooltip,
   Filler,
   Legend,
+  ArcElement,
 } from "chart.js";
 import { MOCK_UI, USE_MOCKS, logRoute, pill } from "@/lib/dev-logger";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ChartTitle, Tooltip, Filler, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  ChartTitle,
+  Tooltip,
+  Filler,
+  Legend,
+  ArcElement
+);
 
 export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
 
@@ -77,7 +90,12 @@ const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
 };
 
 const fmtCurrency = (v: number, digits = 0) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(v);
 
 const parseDate = (s: string) => new Date(s);
 
@@ -101,9 +119,11 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const { setCurrClient, currClient } = useClientStore();
 
   const [exporter, setExporter] = useState<(() => void) | undefined>(undefined);
-  const registerExporter = useCallback((fn?: () => void) => {
-    setExporter(() => fn);
-  }, []);
+
+  // ✅ wrapper so we set a function value (not an updater)
+  // const registerExporter = useCallback((fn?: () => void) => {
+  //   setExporter(() => fn); // store the function without invoking it
+  // }, []);
 
   useEffect(() => {
     if (clientId) setCurrClient(clientId);
@@ -119,33 +139,24 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       setStatus("loading");
       try {
         const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-        let rows: OverviewRow[] = [];
-
-        if (USE_MOCKS) {
-          try {
-            const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
-            if (res.ok) {
-              const payload = await res.json();
-              logRoute("/overviews (mock)", payload);
-              rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-            } else {
-              console.info(`[assets/layout] mock not found for client ${currClient}, showing empty state.`);
-            }
-          } catch {
-            console.info(`[assets/layout] mock fetch failed for client ${currClient}, showing empty state.`);
-          }
-        } else {
-          try {
-            const resp = await axios.post(route, { client_id: currClient });
-            const payload = resp.data;
-            logRoute("/overviews", payload);
-            rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-          } catch (e: any) {
-            console.warn("[assets/layout] live fetch failed; showing empty state", e?.message || e);
-          }
-        }
-
-        setOverviews(rows || []);
+        // let payload: any;
+        // if (USE_MOCKS) {
+        //   const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
+        //   if (!res.ok) throw new Error(`mock not found: /mocks/overviews.${currClient}.json`);
+        //   payload = await res.json();
+        //   logRoute("/overviews (mock)", payload);
+        // } else {
+        //   const resp = await axios.post(route, { client_id: currClient });
+        //   payload = resp.data;
+        //   logRoute("/overviews", payload);
+        // }
+        const resp = await axios.post(route, { client_id: currClient });
+        const payload = resp.data;
+        console.log("payload is: ", payload);
+        logRoute("/overviews", payload);
+        const rows: OverviewRow[] = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
+        if (!rows.length) throw new Error("No overview data");
+        setOverviews(rows);
         setStatus("ready");
         console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
       } catch (err: any) {
@@ -172,6 +183,112 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     return acc;
   }, [current?.table_data]);
 
+  const pieDataSets = useMemo(() => {
+    if (!current?.pie_chart_data?.charts?.length) return [];
+    return current.pie_chart_data.charts.map((c) => ({
+      labels: c.labels,
+      datasets: [{ data: c.data, backgroundColor: c.colors, borderWidth: 0 }],
+    }));
+  }, [current]);
+
+  // ---- Hidden charts to capture images for the PDF (layout-level, so tabs don't matter) ----
+  const chartRefs = useRef<Record<number, any>>({});
+
+  // ---- Table assembler reused for PDF ----
+  const tableForPdf = useCallback(
+    (key: (typeof assetKeys)[number]) => {
+      const columns = ["Bank", "Name", "Currency", "Units", "Balance (USD)"];
+      const body = (aggregatedTables[key] || []).map((r: any) => [
+        r.bank,
+        r.name ?? "",
+        r.currency ?? "",
+        r.units ?? "",
+        fmtCurrency(r.balanceUsd ?? 0),
+      ]);
+      return { columns, body, title: assetLabels[key] };
+    },
+    [aggregatedTables]
+  );
+
+  // ---- PDF: one consistent export for ALL tabs ----
+  const handleExportPdf = useCallback(async () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Cover
+    let y = 60;
+    doc.setFontSize(20).text("Client Assets Report", pageWidth / 2, y, { align: "center" });
+    y += 24;
+    const monthLabel = current?.month_date
+      ? new Date(current.month_date).toLocaleDateString("en-US", { year: "numeric", month: "long" })
+      : "—";
+    doc.setFontSize(12).text(`Reporting Month: ${monthLabel}`, pageWidth / 2, y, { align: "center" });
+
+    // Charts page(s): use images from hidden Pie charts
+    if (pieDataSets.length >= 1) {
+      await new Promise((r) => requestAnimationFrame(r)); // let canvases paint
+
+      const margin = 45;
+      const availW = pageWidth - margin * 2;
+      // pick a square size that fits your layout
+      const side = Math.min(availW, 240); // e.g., 240pt square (~3.33in)
+
+      for (let idx = 0; idx < Math.min(3, pieDataSets.length); idx++) {
+        const chart = chartRefs.current[idx];
+        const img = chart?.toBase64Image?.();
+        if (!img) continue;
+
+        const x = margin + (availW - side) / 2; // center horizontally
+        doc.addImage(img, "PNG", x, y, side, side, undefined, "FAST");
+        y += side + 20;
+
+        if (idx === 1) {
+          doc.addPage();
+          y = 40;
+        }
+      }
+
+      // doc.addPage();
+      // y = 40;
+      // doc.setFontSize(14).text("Overview Charts", 32, y);
+      // y += 16;
+
+      // for (let idx = 0; idx < Math.min(3, pieDataSets.length); idx++) {
+      //   const chart = chartRefs.current[idx];
+      //   const img = chart?.toBase64Image?.();
+      //   if (img) {
+      //     doc.addImage(img, "PNG", 45, y, pageWidth - 90, 180, undefined, "FAST");
+      //     y += 200;
+      //     if (idx === 1) {
+      //       // optional page break after second chart
+      //       doc.addPage();
+      //       y = 40;
+      //     }
+      //   }
+      // }
+    }
+
+    // Holdings-like tables for all asset buckets
+    for (const key of assetKeys) {
+      const { columns, body, title } = tableForPdf(key);
+      if (!body.length) continue;
+      doc.addPage();
+      autoTable(doc, {
+        head: [columns],
+        body,
+        startY: 60,
+        margin: { left: 32, right: 32 },
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [40, 40, 40] },
+        didDrawPage: () => {
+          doc.setFontSize(14).text(title, 32, 40);
+        },
+      });
+    }
+
+    doc.save("assets.pdf");
+  }, [current, pieDataSets, tableForPdf]);
+
   const kpis = useMemo(() => {
     const rows = Object.values(aggregatedTables).flat();
     let assets = 0;
@@ -183,7 +300,8 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       else liabilitiesAbs += -v;
     }
     const net = assets - liabilitiesAbs;
-    const aumFromPie = (current?.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || undefined;
+    const aumFromPie =
+      (current?.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || undefined;
     return { assets, liabilities: liabilitiesAbs, netAssets: net, aumFromPie };
   }, [aggregatedTables, current]);
 
@@ -198,8 +316,12 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const trend = useMemo(() => {
     if (!overviews.length) return null;
     const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
-    const labels = sorted.map((o) => new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" }));
-    const data = sorted.map((o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0);
+    const labels = sorted.map((o) =>
+      new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
+    );
+    const data = sorted.map(
+      (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
+    );
     return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
   }, [overviews]);
 
@@ -212,102 +334,182 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
 
   const base = `/clients_clone/${clientId ?? ""}/assets`;
 
+  const pieOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: {
+        position: "top" as const,
+        labels: { usePointStyle: true, padding: 8, boxWidth: 200 },
+        maxWidth: 200,
+        maxHeight: 25,
+        minHeight: 25,
+      },
+      datalabels: {
+        color: "#fff",
+        font: { weight: "bold" as const, size: 12 },
+        formatter: (value: number, ctx: any) => {
+          const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
+          const pct = Math.round((value / total) * 100);
+          return pct >= 5 ? `${pct}%` : "";
+        },
+      },
+    },
+  };
+
+  const hasCharts = pieDataSets.length === 3;
   return (
-    <AssetsExportContext.Provider value={registerExporter}>
-      <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
-        <div className="mt-2">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-2xl font-bold">Overview</div>
-            <Button onClick={() => exporter?.()} variant="outline" size="sm" disabled={!exporter}>
-              Export PDF
-            </Button>
+    // <AssetsExportContext.Provider value={registerExporter}>
+    <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
+      {hasCharts ? (
+        <div aria-hidden className="fixed opacity-0 pointer-events-none -z-50" style={{ left: -100000, top: -100000 }}>
+          {[
+            { title: "Bank Exposure", desc: "Holdings across banks", label: "Bank Entities", data: pieDataSets[0] },
+            { title: "Asset Breakdown", desc: "By class", label: "Asset Class", data: pieDataSets[1] },
+            { title: "Currency Exposure", desc: "By currency", label: "Currency", data: pieDataSets[2] },
+          ].map(({ title, desc, label, data }, idx) => (
+            <Card key={idx} className="card-hover">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">{title}</CardTitle>
+                <CardDescription>{desc}</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0 flex flex-row h-[350px]">
+                <Pie
+                  // keep a reference for PDF export
+                  // @ts-ignore
+                  ref={(el) => (chartRefs.current[idx] = el)}
+                  className="w-full h-full"
+                  data={data}
+                  options={{
+                    ...pieOptions,
+                    // @ts-ignore – Chart.js types
+                    plugins: { ...pieOptions.plugins, title: { display: true, text: label } },
+                  }}
+                />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="text-muted-foreground text-center text-sm mt-10">
+          No data available. Please upload documents.
+        </div>
+      )}
+
+      {/* ---- Overview (always visible on top of every assets sub-tab) ---- */}
+      <div className="mt-2">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-2xl font-bold">Overview</div>
+          <Button onClick={handleExportPdf} variant="outline" size="sm" disabled={!current}>
+            Export PDF
+          </Button>
+        </div>
+
+        {status === "loading" && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex flex-col space-y-4">
+                <Skeleton className="h-6 w-2/3 rounded" />
+                <Skeleton className="h-[250px] w-full rounded-xl" />
+              </div>
+            ))}
           </div>
+        )}
 
-          {status === "loading" && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex flex-col space-y-4">
-                  <Skeleton className="h-6 w-2/3 rounded" />
-                  <Skeleton className="h-[250px] w-full rounded-xl" />
-                </div>
-              ))}
+        {status === "error" && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircleIcon className="h-5 w-5" />
+            <AlertTitle>Unable to load assets</AlertTitle>
+            <AlertDescription>{errorMsg}</AlertDescription>
+          </Alert>
+        )}
+
+        {status === "ready" && (
+          <>
+            {/* KPI cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <Kpi title="Total Assets" value={fmtCurrency(kpis.assets)} caption="Gross long positions" />
+              <Kpi title="Total Liabilities" value={fmtCurrency(kpis.liabilities)} caption="Loans & short values" />
+              <Kpi title="Net Assets" value={fmtCurrency(kpis.netAssets)} caption="Assets − Liabilities" />
+              <Kpi
+                title="AUM (from banks)"
+                value={kpis.aumFromPie ? fmtCurrency(kpis.aumFromPie) : "—"}
+                caption="Sum of bank exposure"
+              />
             </div>
-          )}
 
-          {status === "ready" && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <Kpi title="Total Assets" value={fmtCurrency(kpis.assets)} caption="Gross long positions" />
-                <Kpi title="Total Liabilities" value={fmtCurrency(kpis.liabilities)} caption="Loans & short values" />
-                <Kpi title="Net Assets" value={fmtCurrency(kpis.netAssets)} caption="Assets − Liabilities" />
-                <Kpi title="AUM (from banks)" value={kpis.aumFromPie ? fmtCurrency(kpis.aumFromPie) : "—"} caption="Sum of bank exposure" />
-              </div>
+            {/* Trend + quick breakdown chips */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Portfolio Trend</CardTitle>
+                  <CardDescription>Net assets over reporting periods</CardDescription>
+                </CardHeader>
+                <CardContent className="h-[260px]">
+                  {trend ? (
+                    <Line data={trend} options={lineOptions} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">No history</div>
+                  )}
+                </CardContent>
+              </Card>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="lg:col-span-2">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Portfolio Trend</CardTitle>
-                    <CardDescription>Net assets over reporting periods</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[260px]">
-                    {trend ? <Line data={trend} options={lineOptions} /> : <div className="text-sm text-muted-foreground">No history</div>}
-                  </CardContent>
-                </Card>
+              <Card className={MOCK_UI(USE_MOCKS)}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
+                  <CardDescription>By asset bucket</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  {bucketChips.map((b) => (
+                    <span
+                      key={b.key}
+                      className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs bg-muted/40"
+                      title={`${b.label} • ${b.count} positions`}
+                    >
+                      <span className="font-medium">{b.label}</span>
+                      <span className="text-muted-foreground">({b.count})</span>
+                      <span className="ml-1 font-semibold">{fmtCurrency(b.total)}</span>
+                    </span>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
 
-                <Card className={MOCK_UI(USE_MOCKS)}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
-                    <CardDescription>By asset bucket</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-wrap gap-2">
-                    {bucketChips.map((b) => (
-                      <span
-                        key={b.key}
-                        className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs bg-muted/40"
-                        title={`${b.label} • ${b.count} positions`}
-                      >
-                        <span className="font-medium">{b.label}</span>
-                        <span className="text-muted-foreground">({b.count})</span>
-                        <span className="ml-1 font-semibold">{fmtCurrency(b.total)}</span>
-                      </span>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
-
-          {/* Optional: if you still want to surface unexpected errors */}
-          {status === "ready" && !overviews.length && errorMsg && (
-            <Alert variant="destructive" className="mt-4">
-              <AlertCircleIcon className="h-5 w-5" />
-              <AlertTitle>Note</AlertTitle>
-              <AlertDescription>{errorMsg}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-
-        <div className="grid w-full grid-cols-1 sm:grid-cols-6 rounded-lg border bg-muted/40">
-          {TABS.map((t) => {
-            const href = `${base}/${t.slug}`;
-            const active = pathname?.startsWith(href);
-            return (
-              <Link
-                key={t.slug}
-                href={href}
-                className={[
-                  "text-center m-1 rounded-md py-2 text-sm transition",
-                  active ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground",
-                ].join(" ")}
-              >
-                {t.label}
-              </Link>
-            );
-          })}
-        </div>
-
-        <div>{children}</div>
+        {/* Optional: if you still want to surface unexpected errors */}
+        {status === "ready" && !overviews.length && errorMsg && (
+          <Alert variant="destructive" className="mt-4">
+            <AlertCircleIcon className="h-5 w-5" />
+            <AlertTitle>Note</AlertTitle>
+            <AlertDescription>{errorMsg}</AlertDescription>
+          </Alert>
+        )}
       </div>
-    </AssetsExportContext.Provider>
+
+      {/* ---- Sub-tab ribbon (matches top ribbon styling) ---- */}
+      <div className="grid w-full grid-cols-1 sm:grid-cols-6 rounded-lg border bg-muted/40">
+        {TABS.map((t) => {
+          const href = `${base}/${t.slug}`;
+          const active = pathname?.startsWith(href);
+          return (
+            <Link
+              key={t.slug}
+              href={href}
+              className={[
+                "text-center m-1 rounded-md py-2 text-sm transition",
+                active ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* ---- Page content for each sub-tab ---- */}
+      <div>{children}</div>
+    </div>
+    // </AssetsExportContext.Provider>
   );
 }
