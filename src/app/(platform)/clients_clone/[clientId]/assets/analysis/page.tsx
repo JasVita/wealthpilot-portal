@@ -25,8 +25,7 @@ ChartJS.register(
   LinearScale,
   Tooltip,
   Legend,
-  Title,
-  ChartDataLabels
+  Title
 );
 
 /* ---------------- Mock data ---------------- */
@@ -249,7 +248,7 @@ export default function AnalysisPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="flex items-center justify-center">
               <div className="w-[260px] h-[260px]">
-                <Doughnut data={doughnut} options={doughnutOptions as any} />
+                <Doughnut data={doughnut} options={doughnutOptions as any} plugins={[ChartDataLabels]} />
               </div>
             </div>
 

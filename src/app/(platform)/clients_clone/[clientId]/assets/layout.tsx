@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import type { PluginOptionsByType } from "chart.js";
+
+import ChartDataLabels from "chartjs-plugin-datalabels";
 import { usePathname, useParams } from "next/navigation";
 import { useEffect, useMemo, useState, createContext, useCallback, useRef } from "react";
 import axios from "axios";
@@ -41,6 +44,8 @@ ChartJS.register(
   ArcElement
 );
 
+try { ChartJS.unregister(ChartDataLabels); } catch { /* no-op */ }
+
 export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
 
 const TABS = [
@@ -57,6 +62,10 @@ type OverviewRow = {
   table_data: any;
   pie_chart_data: { charts: { data: number[]; labels: string[]; colors: string[]; title: string }[] };
 };
+
+type DLPie       = NonNullable<PluginOptionsByType<"pie">["datalabels"]>;
+type DLDoughnut  = NonNullable<PluginOptionsByType<"doughnut">["datalabels"]>;
+type DLBar       = NonNullable<PluginOptionsByType<"bar">["datalabels"]>;
 
 const assetKeys = [
   "cash_and_equivalents",
@@ -337,28 +346,46 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
 
   const base = `/clients_clone/${clientId ?? ""}/assets`;
 
+  // at the bottom of assets/layout.tsx (where pieOptions is declared)
   const pieOptions = {
     responsive: true,
     maintainAspectRatio: true,
     plugins: {
       legend: {
         position: "top" as const,
-        labels: { usePointStyle: true, padding: 8, boxWidth: 200 },
-        maxWidth: 200,
-        maxHeight: 25,
-        minHeight: 25,
+        labels: {
+          usePointStyle: true,
+          padding: 8,
+          boxWidth: 10,   // ✅ valid
+          boxHeight: 10,  // ✅ valid
+          // font, color, etc can go here if you want
+        },
+        // ❌ minHeight / maxWidth / maxHeight are not valid and must be removed
       },
+      // keep datalabels logic, but make sure it's an object (not boolean)
       datalabels: {
+        // show labels only when we actually have values
+        display: (ctx: any) => {
+          const ds = (ctx?.chart?.data?.datasets?.[0]?.data as number[]) || [];
+          const total = ds.reduce((a, b) => a + (Number(b) || 0), 0);
+          return total > 0;
+        },
         color: "#fff",
         font: { weight: "bold" as const, size: 12 },
         formatter: (value: number, ctx: any) => {
-          const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
-          const pct = Math.round((value / total) * 100);
+          const ds = (ctx?.chart?.data?.datasets?.[0]?.data as number[]) || [];
+          const total = ds.reduce((a, b) => a + (Number(b) || 0), 0);
+          if (!total) return "";
+          const pct = Math.round((Number(value) / total) * 100);
           return pct >= 5 ? `${pct}%` : "";
         },
-      },
+      } as Partial<DLPie>, // ✅ keep the type-safe cast you introduced
     },
+    // If you need extra spacing around the chart, use layout padding (optional):
+    // layout: { padding: { top: 0, right: 0, bottom: 0, left: 0 } },
   };
+
+
 
   const hasCharts = pieDataSets.length === 3;
   return (
@@ -378,17 +405,35 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
               </CardHeader>
               <CardContent className="pt-0 flex flex-row h-[350px]">
                 <Pie
-                  // keep a reference for PDF export
-                  // @ts-ignore
                   ref={(el) => (chartRefs.current[idx] = el)}
                   className="w-full h-full"
                   data={data}
                   options={{
-                    ...pieOptions,
-                    // @ts-ignore – Chart.js types
-                    plugins: { ...pieOptions.plugins, title: { display: true, text: label } },
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: {
+                        position: "top",
+                        labels: {
+                          usePointStyle: true,
+                          padding: 8,
+                          boxWidth: 10,   // ✅ allowed
+                          boxHeight: 10,  // ✅ allowed
+                        },
+                      },
+                      title: { display: true, text: label },
+                      // keep datalabels off on these hidden pies to avoid "_listened" crashes
+                      datalabels: { display: () => false } as Partial<
+                        NonNullable<PluginOptionsByType<"pie">["datalabels"]>
+                      >,
+                    },
+                    // Optional: add chart padding if you need more space around legend
+                    // layout: { padding: { top: 0, right: 0, bottom: 0, left: 0 } },
                   }}
+                  plugins={[]}
                 />
+
+
               </CardContent>
             </Card>
           ))}

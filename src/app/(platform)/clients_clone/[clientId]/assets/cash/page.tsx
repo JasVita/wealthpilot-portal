@@ -18,7 +18,7 @@ import ChartDataLabels from "chartjs-plugin-datalabels";
 import { Bar } from "react-chartjs-2";
 import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger"; // ← mock styling helper
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, CJTitle, Tooltip, Legend, ChartDataLabels);
+ChartJS.register(CategoryScale, LinearScale, BarElement, CJTitle, Tooltip, Legend);
 
 // ---- Mock data (replace with API later) -------------------------
 const ACCOUNTS = [
@@ -150,7 +150,7 @@ export default function CashPage() {
 
           {/* Right: bar chart */}
           <div className="h-[320px] rounded-xl border p-3">
-            <Bar data={barData} options={barOptions} />
+            <Bar data={barData} options={barOptions} plugins={[ChartDataLabels]} />
           </div>
         </div>
       </CardContent>
