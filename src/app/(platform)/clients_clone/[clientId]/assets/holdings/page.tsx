@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState, useCallback, useContext } from "r
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircleIcon, UsersRound } from "lucide-react";
-import { Pie } from "react-chartjs-2";
+import { Pie, Doughnut } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -37,7 +39,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   Filler,
-  // ChartDataLabels
+  ChartDataLabels
 );
 
 interface OverviewRow {
@@ -58,6 +60,14 @@ const assetKeys = [
   "structured_products",
   "loans",
 ] as const;
+const assetId = (k: (typeof assetKeys)[number]) => `asset-${k}`;
+
+const STICKY_OFFSET_PX = 69;
+
+const getScrollRoot = () =>
+  typeof document !== "undefined"
+    ? (document.querySelector('[data-scroll-root="assets"]') as HTMLElement | null)
+    : null;
 
 const assetLabels: Record<(typeof assetKeys)[number], string> = {
   cash_and_equivalents: "Cash & Equivalents",
@@ -71,7 +81,12 @@ const assetLabels: Record<(typeof assetKeys)[number], string> = {
 };
 
 const fmtCurrency = (v: number, digits = 0) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(v);
 
 /** map backend aliases -> canonical keys */
 const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
@@ -120,9 +135,7 @@ export default function HoldingsPage() {
       const colors: string[] = Array.isArray(c?.colors) ? c.colors : [];
       // ensure labels exist and match data length
       const labels: string[] =
-        Array.isArray(c?.labels) && c.labels.length === data.length
-          ? c.labels
-          : data.map((_, i) => `Item ${i + 1}`);
+        Array.isArray(c?.labels) && c.labels.length === data.length ? c.labels : data.map((_, i) => `Item ${i + 1}`);
 
       return {
         labels,
@@ -206,14 +219,15 @@ export default function HoldingsPage() {
 
     doc.setFontSize(18).text("Client Assets", pageWidth / 2, y, { align: "center" });
     y += 24;
-    doc
-      .setFontSize(12)
-      .text(
-        `Reporting Month: ${new Date(current.month_date).toLocaleDateString("en-US", { year: "numeric", month: "long" })}`,
-        pageWidth / 2,
-        y,
-        { align: "center" }
-      );
+    doc.setFontSize(12).text(
+      `Reporting Month: ${new Date(current.month_date).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+      })}`,
+      pageWidth / 2,
+      y,
+      { align: "center" }
+    );
     y += 32;
 
     await Promise.all(
@@ -258,25 +272,93 @@ export default function HoldingsPage() {
     return () => registerExport(undefined);
   }, [registerExport, handleDownloadPdf]);
 
+  // refs to each section wrapper
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeAssetTab, setActiveAssetTab] = useState<string>(assetKeys[0]);
+
+  // Which tabs to show (only sections that have rows)
+  const visibleAssetKeys = useMemo(
+    () => assetKeys.filter((k) => (aggregatedTables[k] ?? []).length > 0),
+    [aggregatedTables]
+  );
+
+  const handleAssetTabClick = useCallback((key: (typeof assetKeys)[number]) => {
+    const el = sectionRefs.current[assetId(key)];
+    const root = getScrollRoot();
+    if (!el || !root) return;
+
+    const rootRect = root.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    // position of section relative to the scroll root
+    const relativeTop = elRect.top - rootRect.top;
+
+    const targetY = root.scrollTop + relativeTop - STICKY_OFFSET_PX;
+    root.scrollTo({ top: targetY, behavior: "smooth" });
+
+    // (optional) set immediately so the trigger highlights right away
+    setActiveAssetTab(key);
+  }, []);
+
+  // Observe which section is in view to update the active tab
+  useEffect(() => {
+    if (!visibleAssetKeys.length) return;
+    const root = getScrollRoot();
+    if (!root) return;
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const inView = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+
+        if (inView?.target?.id) {
+          const id = inView.target.id;
+          const key = id.replace("asset-", "") as (typeof assetKeys)[number];
+          if (key && key !== activeAssetTab) setActiveAssetTab(key);
+        }
+      },
+      {
+        root,
+        // Trigger when a section head is near the top of the scroll root
+        rootMargin: `-${STICKY_OFFSET_PX + 8}px 0px -60% 0px`,
+        threshold: [0, 0.25, 0.5, 1],
+      }
+    );
+
+    visibleAssetKeys.forEach((k) => {
+      const el = sectionRefs.current[assetId(k)];
+      if (el) obs.observe(el);
+    });
+
+    return () => obs.disconnect();
+  }, [visibleAssetKeys, activeAssetTab]);
+
   const pieOptions = {
     responsive: true,
     maintainAspectRatio: true,
     plugins: {
       legend: {
-        position: "top" as const,
-        labels: { usePointStyle: true, padding: 8, boxWidth: 200 },
-        maxWidth: 200,
-        maxHeight: 25,
-        minHeight: 25,
+        // position: "top" as const,
+        // labels: { usePointStyle: true, padding: 8, boxWidth: 200 },
+        // maxWidth: 200,
+        // maxHeight: 25,
+        // minHeight: 25,
+        display: false,
       },
       datalabels: {
         color: "#fff",
-        font: { weight: "bold" as const, size: 12 },
+        font: { weight: "bold" as const },
         formatter: (value: number, ctx: any) => {
           const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
           const pct = Math.round((value / total) * 100);
           return pct >= 5 ? `${pct}%` : "";
         },
+        // formatter: (value: number, ctx: any) => {
+        //   const dataset = ctx.dataset?.data || [];
+        //   const t = (dataset as number[]).reduce((a, b) => a + b, 0);
+        //   const p = pct(value, t);
+        //   return p >= 3 ? `${Math.round(p)}%` : "";
+        // },
       },
     },
   };
@@ -312,71 +394,109 @@ export default function HoldingsPage() {
     return <p className="p-6 text-muted-foreground">No consolidated data found for this client yet.</p>;
   }
 
-  const hasCharts = pieDataSets.length === 3;
+  const pieCards = [
+    { title: "Bank Exposure", description: "Holdings across different banks" }, // pieDataSets[0]
+    { title: "Asset Breakdown", description: "Allocation by asset class" }, // pieDataSets[1]
+    { title: "Currency Exposure", description: "Exposure by currency" }, // pieDataSets[2]
+  ];
 
   return (
     <div className="flex flex-col gap-4">
-      {hasCharts ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { title: "Bank Exposure", desc: "Holdings across banks", label: "Bank Entities", data: pieDataSets[0] },
-            { title: "Asset Breakdown", desc: "By class", label: "Asset Class", data: pieDataSets[1] },
-            { title: "Currency Exposure", desc: "By currency", label: "Currency", data: pieDataSets[2] },
-          ].map(({ title, desc, label, data }, idx) => (
-            <Card key={idx} className="card-hover">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">{title}</CardTitle>
-                <CardDescription>{desc}</CardDescription>
-              </CardHeader>
-              <CardContent className="pt-0 flex flex-row h-[350px]">
-                {(() => {
-                  const ds = data?.datasets?.[0]?.data ?? [];
-                  const hasValidData =
-                    Array.isArray(ds) && ds.length > 0 &&
-                    Array.isArray(data?.labels) && data.labels.length === ds.length;
+      {pieCards.map((meta, idx) => {
+        const ds = pieDataSets[idx];
+        if (!ds) return null;
 
-                  return (
-                    <Pie
-                      // @ts-ignore
-                      ref={(el) => (chartRefs.current[idx] = el)}
-                      className="w-full h-full"
-                      data={data}
-                      options={{
-                        ...pieOptions,
-                        plugins: {
-                          ...pieOptions.plugins,
-                          title: { display: true, text: label },
-                          // optional: you can also guard inside options
-                          datalabels: {
-                            ...(pieOptions.plugins?.datalabels as any),
-                            display: hasValidData,      // show labels only when valid
-                          },
-                        },
-                      }}
-                      plugins={hasValidData ? [ChartDataLabels] : []}  // ✅ attach plugin only when safe
-                    />
-                  );
-                })()}
-              </CardContent>
+        return (
+          <Card key={meta.title}>
+            <CardHeader>
+              <CardTitle>{meta.title}</CardTitle>
+              <CardDescription>{meta.description}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="flex items-center justify-center">
+                  <div className="w-[260px] h-[260px]">
+                    <Doughnut data={ds} options={pieOptions as any} />
+                  </div>
+                </div>
 
-            </Card>
-          ))}
+                {/* Compact, scrollable table */}
+                <div className="overflow-hidden">
+                  <div className="max-h-[360px] overflow-y-auto">
+                    <Table className="text-sm">
+                      <TableHeader className="sticky top-0 bg-background z-10">
+                        <TableRow>
+                          <TableHead className="w-1/2">
+                            {meta.title === "Bank Exposure"
+                              ? "Bank"
+                              : meta.title === "Asset Breakdown"
+                              ? "Asset"
+                              : "Currency"}
+                          </TableHead>
+                          <TableHead className="w-1/4 text-right">Value</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ds.labels.map((label: string, i: number) => (
+                          <TableRow
+                            key={`${meta.title}-${label}-${i}`}
+                            className="hover:bg-muted/40 border-b last:border-0"
+                          >
+                            <TableCell className="whitespace-nowrap py-3">{label}</TableCell>
+                            <TableCell className="whitespace-nowrap py-3 text-right">
+                              {fmtCurrency(ds.datasets[0].data[i] as number)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+
+      {visibleAssetKeys.length > 0 && (
+        <div className="sticky z-20 bg-white border-b" style={{ top: STICKY_OFFSET_PX - 48 }}>
+          <div className="px-4">
+            <Tabs
+              value={activeAssetTab}
+              onValueChange={(v) => handleAssetTabClick(v as (typeof assetKeys)[number])}
+              className="w-full"
+            >
+              {/* Left-aligned, increased spacing, wraps on small screens */}
+              <TabsList className="flex flex-wrap justify-start gap-2 sm:gap-3 p-0">
+                {visibleAssetKeys.map((k) => (
+                  <TabsTrigger key={k} value={k} className="font-normal px-3 py-1.5">
+                    {assetLabels[k]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
-      ) : (
-        <div className="text-muted-foreground text-center text-sm mt-10">No data available. Please upload documents.</div>
       )}
 
       <div className="space-y-8">
-        {assetKeys.map((k) =>
-          (aggregatedTables[k] ?? []).length ? (
-            <DataTable
+        {assetKeys.map((k) => {
+          const rows = aggregatedTables[k] ?? [];
+          if (!rows.length) return null;
+
+          return (
+            <section
               key={k}
-              title={assetLabels[k]}
-              rows={aggregatedTables[k]}
-              showLivePrices={assetLabels[k] === "Direct Equities"}
-            />
-          ) : null
-        )}
+              id={assetId(k)}
+              ref={(el) => {
+                sectionRefs.current[assetId(k)] = el as HTMLDivElement | null;
+              }}
+              className="scroll-mt-32"
+            >
+              <DataTable title={assetLabels[k]} rows={rows} showLivePrices={assetLabels[k] === "Direct Equities"} />
+            </section>
+          );
+        })}
       </div>
     </div>
   );

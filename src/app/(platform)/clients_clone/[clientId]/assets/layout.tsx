@@ -125,7 +125,7 @@ function Kpi({ title, value, caption }: { title: string; value: string; caption?
 }
 
 export default function AssetsLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter(); 
+  const router = useRouter();
   const pathname = usePathname();
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, currClient } = useClientStore();
@@ -390,7 +390,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const hasCharts = pieDataSets.length === 3;
   return (
     // <AssetsExportContext.Provider value={registerExporter}>
-    <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4">
+    <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4" data-scroll-root="assets">
       {hasCharts ? (
         <div aria-hidden className="fixed opacity-0 pointer-events-none -z-50" style={{ left: -100000, top: -100000 }}>
           {[
@@ -536,7 +536,10 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       </div>
 
       {/* ── Sticky sub-tabs (locks like the top “Profile / Custodians / …” ribbon) ── */}
-      <div className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px" style={{ top: -15 }}>
+      <div
+        className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px"
+        style={{ top: -16 }}
+      >
         <div className="px-4">
           <Tabs
             value={(pathname?.split("/").at(-1) as string) ?? "holdings"}
