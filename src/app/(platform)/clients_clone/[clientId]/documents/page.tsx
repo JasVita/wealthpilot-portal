@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation"; 
+import { useParams } from "next/navigation";
 import { useClientStore } from "@/stores/clients-store";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
@@ -26,7 +26,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { MOCK_UI, USE_MOCKS } from "@/lib/dev-logger";
-import { MOCK_DOCS, Doc } from "@/lib/mock-docs";
+import { Doc } from "@/lib/mock-docs"; // keep the type
+import axios from "axios";
 
 /* -------------------- icons -------------------- */
 function FileTypeIcon({ filename }: { filename: string }) {
@@ -85,6 +86,35 @@ function FileTypeIcon({ filename }: { filename: string }) {
   );
 }
 
+/* -------------------- helpers -------------------- */
+function fileNameFromUrl(url?: string | null) {
+  if (!url) return "";
+  try {
+    const p = new URL(url).pathname;
+    const last = p.split("/").pop() || "";
+    return decodeURIComponent(last);
+  } catch {
+    // in case it's not an absolute URL
+    const last = url.split("/").pop() || "";
+    return decodeURIComponent(last);
+  }
+}
+
+function displayName(d: any) {
+  // Prefer an explicit name if backend ever adds it
+  if (d?.name) return d.name;
+
+  // Bank + date looks nice
+  if (d?.bankname || d?.as_of_date) {
+    const dt = d?.as_of_date ? new Date(d.as_of_date) : null;
+    const ymd = dt && !isNaN(+dt) ? dt.toISOString().slice(0, 10) : "";
+    return [d?.bankname, ymd].filter(Boolean).join(" — ") || `Document ${d?.id ?? ""}`;
+  }
+
+  // Fallback to filename from URLs
+  return fileNameFromUrl(d?.pdf_url) || fileNameFromUrl(d?.excel_url) || `Document ${d?.id ?? ""}`;
+}
+
 /* -------------------- folders -------------------- */
 type FolderKey =
   | "all"
@@ -110,15 +140,16 @@ const FOLDERS: { key: FolderKey; label: string; icon: any }[] = [
 ];
 
 function resolveFolder(d: Doc): FolderKey {
-  const name = `${d.name} ${d.linked} ${d.type}`.toLowerCase();
-  if (d.type === "Personal" || name.includes("kyc")) return "personal_info";
-  if (name.includes("mandate")) return "mandate";
-  if (name.includes("kyc")) return "kyc";
-  if (name.includes("signature")) return "client_signature";
-  if (name.includes("trust")) return "trust";
-  if (d.type === "Statement" || name.includes("statement") || name.includes("report")) return "statements";
-  if (name.includes("corporate")) return "corporate_docs";
-  return "others";
+  // const name = `${d.name} ${d.linked} ${d.type}`.toLowerCase();
+  // if (d.type === "Personal" || name.includes("kyc")) return "personal_info";
+  // if (name.includes("mandate")) return "mandate";
+  // if (name.includes("kyc")) return "kyc";
+  // if (name.includes("signature")) return "client_signature";
+  // if (name.includes("trust")) return "trust";
+  // if (d.type === "Statement" || name.includes("statement") || name.includes("report")) return "statements";
+  // if (name.includes("corporate")) return "corporate_docs";
+  // return "others";
+  return "statements";
 }
 
 function daysTo(dateStr: string) {
@@ -131,20 +162,44 @@ function daysTo(dateStr: string) {
 
 /* -------------------- page -------------------- */
 export default function DocumentsPage() {
-  const { clientId } = useParams<{ clientId: string }>(); // ✅ read params via hook
-  const { setCurrClient } = useClientStore();
+  // const { clientId } = useParams<{ clientId: string }>();
+  const { setCurrClient, currClient } = useClientStore();
 
-  useEffect(() => {
-    if (clientId) setCurrClient(clientId);
-  }, [clientId, setCurrClient]);
-
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [loading, setLoading] = useState(true);
   const [folder, setFolder] = useState<FolderKey>("all");
   const [q, setQ] = useState("");
 
-  const docsWithFolder = useMemo(
-    () => MOCK_DOCS.map((doc) => ({ ...doc, __folder: resolveFolder(doc) })),
-    []
-  );
+  useEffect(() => {
+    if (currClient) setCurrClient(currClient);
+  }, [currClient, setCurrClient]);
+
+  // 🔗 fetch documents from API
+  useEffect(() => {
+    async function fetchDocs() {
+      try {
+        setLoading(true);
+        const { data } = await axios.post<{
+          status: string;
+          documents: Doc[];
+          message: string;
+        }>(`${process.env.NEXT_PUBLIC_API_URL}/documents`, {
+          client_id: currClient,
+        });
+        // const data = await res.json();
+        console.log(JSON.stringify(data, null, 2));
+        setDocs(data.documents || []);
+      } catch (err) {
+        console.error("Failed to fetch documents", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (currClient) fetchDocs();
+  }, [currClient]);
+
+  // const docsWithFolder = useMemo(() => docs.map((doc) => ({ ...doc, __folder: resolveFolder(doc) })), [docs]);
+  const docsWithFolder = useMemo(() => docs.map((doc) => ({ ...doc, __folder: resolveFolder(doc) })), [docs]);
 
   const counts = useMemo(() => {
     const c: Record<FolderKey, number> = {
@@ -162,19 +217,35 @@ export default function DocumentsPage() {
     return c;
   }, [docsWithFolder]);
 
+  // const filtered = useMemo(() => {
+  //   let rows = docsWithFolder;
+  //   if (folder !== "all") rows = rows.filter((r: any) => r.__folder === folder);
+  //   if (q.trim()) {
+  //     const s = q.toLowerCase();
+  //     rows = rows.filter((r) => `${r.type} ${r.linked} ${r.name} ${r.user}`.toLowerCase().includes(s));
+  //   }
+  //   return rows;
+  // }, [docsWithFolder, folder, q]);
+
   const filtered = useMemo(() => {
     let rows = docsWithFolder;
     if (folder !== "all") rows = rows.filter((r: any) => r.__folder === folder);
     if (q.trim()) {
       const s = q.toLowerCase();
-      rows = rows.filter((r) => `${r.type} ${r.linked} ${r.name} ${r.user}`.toLowerCase().includes(s));
+      rows = rows.filter((r: any) =>
+        [r.bankname, r.as_of_date, r.id?.toString(), fileNameFromUrl(r.pdf_url), fileNameFromUrl(r.excel_url)]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(s)
+      );
     }
     return rows;
   }, [docsWithFolder, folder, q]);
 
   return (
     <div className="p-4">
-      <Card className={MOCK_UI(USE_MOCKS)}>
+      <Card>
         <CardHeader className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -224,61 +295,145 @@ export default function DocumentsPage() {
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
+              {/* <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">
+                      Loading documents...
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.length > 0 ? (
+                  filtered.map((d: Doc & { __folder: FolderKey }, i) => {
+                    const d2 = daysTo(d.exp);
+                    const expBadge =
+                      d.exp === "—" ? null : d2 <= 0 ? (
+                        <span className="ml-2 text-xs text-red-600">Expired</span>
+                      ) : d2 <= 30 ? (
+                        <span className="ml-2 text-xs text-amber-600">Expiring in {d2}d</span>
+                      ) : null;
 
+                    return (
+                      <TableRow key={d.id ?? i}>
+                        <TableCell>{d.type}</TableCell>
+                        <TableCell>{d.linked}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <FileTypeIcon filename={d.name} />
+                            <Link
+                              href={`/clients_clone/${currClient}/documents/${encodeURIComponent(
+                                (d as any).id ?? d.name
+                              )}`}
+                              className="text-primary hover:underline"
+                              title={d.name}
+                            >
+                              {d.name}
+                            </Link>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {d.exp}
+                          {expBadge}
+                        </TableCell>
+                        <TableCell>{d.upload}</TableCell>
+                        <TableCell>{d.size}</TableCell>
+                        <TableCell>{d.user}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button size="icon" variant="ghost" aria-label="Preview">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" aria-label="Download">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" aria-label="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      No documents found in this folder.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody> */}
               <TableBody>
-                {filtered.map((d: Doc & { __folder: FolderKey }, i) => {
-                  const d2 = daysTo(d.exp);
-                  const expBadge =
-                    d.exp === "—"
-                      ? null
-                      : d2 <= 0
-                      ? <span className="ml-2 text-xs text-red-600">Expired</span>
-                      : d2 <= 30
-                      ? <span className="ml-2 text-xs text-amber-600">Expiring in {d2}d</span>
-                      : null;
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">
+                      Loading documents...
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.length > 0 ? (
+                  filtered.map((d: any, i) => {
+                    const d2 = daysTo(d.exp ?? "—");
+                    const expBadge =
+                      !d.exp || d.exp === "—" ? null : d2 <= 0 ? (
+                        <span className="ml-2 text-xs text-red-600">Expired</span>
+                      ) : d2 <= 30 ? (
+                        <span className="ml-2 text-xs text-amber-600">Expiring in {d2}d</span>
+                      ) : null;
 
-                  return (
-                    <TableRow key={d.id ?? i}>
-                      <TableCell>{d.type}</TableCell>
-                      <TableCell>{d.linked}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <FileTypeIcon filename={d.name} />
-                          {/* ✅ build URLs with clientId from useParams() */}
-                          <Link
-                            href={`/clients_clone/${clientId}/documents/${encodeURIComponent((d as any).id ?? d.name)}`}
-                            className="text-primary hover:underline"
-                            title={d.name}
-                          >
-                            {d.name}
-                          </Link>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {d.exp}
-                        {expBadge}
-                      </TableCell>
-                      <TableCell>{d.upload}</TableCell>
-                      <TableCell>{d.size}</TableCell>
-                      <TableCell>{d.user}</TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button size="icon" variant="ghost" aria-label="Preview">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" aria-label="Download">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" aria-label="Delete">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                    // 🔒 safe filename for the icon (use URLs or name if present)
+                    const safeFilename =
+                      fileNameFromUrl(d.pdf_url) ||
+                      fileNameFromUrl(d.excel_url) ||
+                      (typeof d.name === "string" ? d.name : "");
 
-                {filtered.length === 0 && (
+                    // 🏷️ label to show in the table
+                    const label = displayName(d);
+
+                    // 🔍 adapt your search to the fields you actually have
+                    // (update your filtered useMemo too – see below)
+                    return (
+                      <TableRow key={d.id ?? i}>
+                        <TableCell>{"Statement"}</TableCell>
+                        <TableCell>{d.bankname ?? "—"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <FileTypeIcon filename={safeFilename} />
+                            <Link
+                              href={`/clients_clone/${currClient}/documents/${encodeURIComponent(d.id ?? label)}`}
+                              className="text-primary hover:underline"
+                              title={label}
+                            >
+                              {label}
+                            </Link>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {d.exp ?? "—"}
+                          {expBadge}
+                        </TableCell>
+                        <TableCell>
+                          {/* if you want, you can show as_of_date as "Upload Date" for now */}
+                          {d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—"}
+                        </TableCell>
+                        <TableCell>{"—"}</TableCell>
+                        <TableCell>{"—"}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button size="icon" variant="ghost" aria-label="Preview">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" aria-label="Download" asChild>
+                              <a href={d.pdf_url ?? d.excel_url ?? "#"} target="_blank" rel="noopener noreferrer">
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                            <Button size="icon" variant="ghost" aria-label="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                ) : (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No documents found in this folder.
