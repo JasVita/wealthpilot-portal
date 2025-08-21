@@ -145,29 +145,70 @@ export default function ProfilePage() {
   /* fetch through same-origin proxy → no CORS */
   async function refetch() {
     if (!clientId) return;
+
     setStatus("loading");
+    setErrorMsg("");
+    setApiData(null);
+    setMockFile(null);
+
+    let gotLive = false;
+
+    // 1) Try LIVE (DB) first
     try {
       const res = await fetch("/api/clients/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ client_id: Number(clientId) }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Profile not found (API).");
+
+      if (!res.ok) {
+        // try to read API error message
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error ?? "Profile not found (API).");
+      }
+
       const payload = (await res.json()) as ApiProfile;
+
+      // optional: treat totally empty payload as an error
+      const hasAny =
+        (payload?.basic && Object.keys(payload.basic).length) ||
+        (payload?.personal && Object.keys(payload.personal).length) ||
+        (payload?.contact && Object.keys(payload.contact).length) ||
+        (payload?.associated_clients?.length ?? 0) > 0;
+
+      if (!hasAny) throw new Error("Empty profile (API).");
+
       setApiData(payload);
       setStatus("ready");
+      gotLive = true;
+      // console.log("network live");
+      return; // ✅ stop here — do NOT fetch mock
     } catch (err: any) {
-      setErrorMsg(err?.message || "Failed to load profile.");
-      setStatus("error");
+      // If USE_MOCKS is off, surface the live error
+      if (!USE_MOCKS) {
+        setStatus("error");
+        setErrorMsg(err?.message || "Failed to load profile.");
+        return;
+      }
+      // else fall through to mock fetch
     }
 
-    if (USE_MOCKS) {
+    // 2) Fallback to MOCK *only if* the live fetch failed
+    if (USE_MOCKS && !gotLive) {
       try {
         const m = await fetch(`/mocks/profile.${clientId}.json`, { cache: "no-store" });
-        if (m.ok) setMockFile(await m.json());
-      } catch {}
+        if (!m.ok) throw new Error("Mock file not found");
+        const mock = (await m.json()) as ProfileShape;
+        setMockFile(mock);
+        setStatus("ready");
+        // console.log("network mock");
+      } catch (err: any) {
+        setStatus("error");
+        setErrorMsg(err?.message || "Failed to load profile (mock fallback).");
+      }
     }
   }
+
 
   useEffect(() => { void refetch(); }, [clientId]);
 

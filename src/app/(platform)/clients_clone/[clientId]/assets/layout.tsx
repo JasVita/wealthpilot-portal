@@ -356,11 +356,9 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         labels: {
           usePointStyle: true,
           padding: 8,
-          boxWidth: 10,   // ✅ valid
-          boxHeight: 10,  // ✅ valid
-          // font, color, etc can go here if you want
+          boxWidth: 10,
+          boxHeight: 10,
         },
-        // ❌ minHeight / maxWidth / maxHeight are not valid and must be removed
       },
       // keep datalabels logic, but make sure it's an object (not boolean)
       datalabels: {
@@ -384,8 +382,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     // If you need extra spacing around the chart, use layout padding (optional):
     // layout: { padding: { top: 0, right: 0, bottom: 0, left: 0 } },
   };
-
-
 
   const hasCharts = pieDataSets.length === 3;
   return (
@@ -423,12 +419,11 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                       },
                       title: { display: true, text: label },
                       // keep datalabels off on these hidden pies to avoid "_listened" crashes
-                      datalabels: { display: () => false } as Partial<
-                        NonNullable<PluginOptionsByType<"pie">["datalabels"]>
-                      >,
+                      // datalabels: { display: () => false } as Partial<
+                      //   NonNullable<PluginOptionsByType<"pie">["datalabels"]>
+                      // >,
+                      datalabels: false as unknown as Partial<NonNullable<PluginOptionsByType<"pie">["datalabels"]>>,
                     },
-                    // Optional: add chart padding if you need more space around legend
-                    // layout: { padding: { top: 0, right: 0, bottom: 0, left: 0 } },
                   }}
                   plugins={[]}
                 />
