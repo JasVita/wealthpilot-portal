@@ -17,13 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,8 +44,8 @@ type RiskRecord = {
   time_horizon: string;
   liquidity: string;
   justification: string;
-  effective_date: string;   // YYYY-MM-DD
-  expiration_date: string;  // YYYY-MM-DD
+  effective_date: string; // YYYY-MM-DD
+  expiration_date: string; // YYYY-MM-DD
 };
 
 type ComplianceMock = {
@@ -73,15 +67,7 @@ const smallDot: Record<Tone, string> = {
   default: "bg-slate-400",
 };
 
-function StatusRow({
-  title,
-  value,
-  tone = "default",
-}: {
-  title: string;
-  value: string;
-  tone?: Tone;
-}) {
+function StatusRow({ title, value, tone = "default" }: { title: string; value: string; tone?: Tone }) {
   return (
     <div className="flex items-center justify-between rounded-lg border p-3">
       <div className="font-medium">{title}</div>
@@ -96,7 +82,7 @@ function StatusRow({
 const fmt = (s: string) =>
   new Date(s).toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
 
-export default function CompliancePage({ params }: { params: { clientId: string } }) {
+export default function CompliancePage({ params }: any) {
   const { setCurrClient } = useClientStore();
   useEffect(() => {
     if (params.clientId) setCurrClient(params.clientId);
@@ -112,9 +98,11 @@ export default function CompliancePage({ params }: { params: { clientId: string 
         if (!res.ok) return;
         const data = (await res.json()) as ComplianceMock;
         if (!cancelled) setMock(data);
-      } catch { }
+      } catch {}
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [params.clientId]);
 
   const seed = useMemo(() => {
@@ -128,8 +116,7 @@ export default function CompliancePage({ params }: { params: { clientId: string 
           tags: ["Linked Client 0001"],
           rating: 1,
           label: "Asset Preservation",
-          objective:
-            "My objective is slight asset appreciation with capital preservation being the primary goal.",
+          objective: "My objective is slight asset appreciation with capital preservation being the primary goal.",
           expected_return: "1–3%",
           expected_volatility: "1–4%",
           declines: "Up to 10%",
@@ -145,15 +132,13 @@ export default function CompliancePage({ params }: { params: { clientId: string 
           tags: ["Client not confirmed", "Linked Client 0001"],
           rating: 2,
           label: "Conservative Growth",
-          objective:
-            "Balanced approach with moderate growth potential while maintaining stability.",
+          objective: "Balanced approach with moderate growth potential while maintaining stability.",
           expected_return: "3–5%",
           expected_volatility: "5–8%",
           declines: "Up to 15%",
           time_horizon: "2–3 years",
           liquidity: "Moderate liquidity requirements",
-          justification:
-            "Previous assessment based on initial client requirements before profile update.",
+          justification: "Previous assessment based on initial client requirements before profile update.",
           effective_date: "2024-04-08",
           expiration_date: "2025-04-08",
         },
@@ -181,8 +166,7 @@ export default function CompliancePage({ params }: { params: { clientId: string 
     setForm({ ...items[idx] });
     setEditOpen(true);
   };
-  const handleForm = <K extends keyof RiskRecord>(k: K, v: RiskRecord[K]) =>
-    setForm((f) => (f ? { ...f, [k]: v } : f));
+  const handleForm = <K extends keyof RiskRecord>(k: K, v: RiskRecord[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
   const saveEdit = () => {
     if (editIdx == null || !form) return;
     setItems((prev) => prev.map((r, i) => (i === editIdx ? { ...form } : r)));
@@ -225,10 +209,7 @@ export default function CompliancePage({ params }: { params: { clientId: string 
             const isActive = r.status === "Effective";
             const tone: Tone = isActive ? "success" : "warning";
             return (
-              <div
-                key={idx}
-                className={`rounded-lg border p-4 ${isActive ? "" : "bg-amber-50/60"}`}
-              >
+              <div key={idx} className={`rounded-lg border p-4 ${isActive ? "" : "bg-amber-50/60"}`}>
                 {/* Tags row */}
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <Badge className={toneCls[tone]}>{r.status}</Badge>
@@ -245,8 +226,9 @@ export default function CompliancePage({ params }: { params: { clientId: string 
                   <div className="lg:col-span-2 space-y-3">
                     <div className="flex items-center gap-6">
                       <div
-                        className={`grid h-20 w-20 place-items-center rounded-lg border-2 text-3xl font-bold ${isActive ? "border-emerald-300 text-emerald-600" : "border-amber-300 text-amber-600"
-                          }`}
+                        className={`grid h-20 w-20 place-items-center rounded-lg border-2 text-3xl font-bold ${
+                          isActive ? "border-emerald-300 text-emerald-600" : "border-amber-300 text-amber-600"
+                        }`}
                         title="Risk Rating"
                       >
                         {r.rating}
@@ -317,11 +299,10 @@ export default function CompliancePage({ params }: { params: { clientId: string 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="mb-1 block">Status</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(v) => handleForm("status", v as RiskRecord["status"])}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select value={form.status} onValueChange={(v) => handleForm("status", v as RiskRecord["status"])}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Effective">Effective</SelectItem>
                     <SelectItem value="Expired">Expired</SelectItem>
@@ -356,7 +337,10 @@ export default function CompliancePage({ params }: { params: { clientId: string 
 
               <div>
                 <Label className="mb-1 block">Expected volatility</Label>
-                <Input value={form.expected_volatility} onChange={(e) => handleForm("expected_volatility", e.target.value)} />
+                <Input
+                  value={form.expected_volatility}
+                  onChange={(e) => handleForm("expected_volatility", e.target.value)}
+                />
               </div>
 
               <div>
@@ -376,7 +360,11 @@ export default function CompliancePage({ params }: { params: { clientId: string 
 
               <div className="sm:col-span-2">
                 <Label className="mb-1 block">Justification</Label>
-                <Textarea rows={3} value={form.justification} onChange={(e) => handleForm("justification", e.target.value)} />
+                <Textarea
+                  rows={3}
+                  value={form.justification}
+                  onChange={(e) => handleForm("justification", e.target.value)}
+                />
               </div>
 
               <div>
@@ -416,7 +404,9 @@ export default function CompliancePage({ params }: { params: { clientId: string 
           )}
 
           <DialogFooter className="mt-2">
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={saveEdit}>Save</Button>
           </DialogFooter>
         </DialogContent>
@@ -443,15 +433,7 @@ export default function CompliancePage({ params }: { params: { clientId: string 
   );
 }
 
-function Field({
-  k,
-  v,
-  className = "",
-}: {
-  k: string;
-  v?: string | number;
-  className?: string;
-}) {
+function Field({ k, v, className = "" }: { k: string; v?: string | number; className?: string }) {
   return (
     <div className={`grid grid-cols-12 gap-2 ${className}`}>
       <div className="col-span-6 text-muted-foreground">{k}</div>

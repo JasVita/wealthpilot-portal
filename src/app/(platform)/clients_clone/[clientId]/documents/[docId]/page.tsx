@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { useClientStore } from "@/stores/clients-store";
+import { use } from "react";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -151,13 +152,10 @@ function RowsTable({
 }
 
 /* ============================= Page ============================= */
-export default function DocumentDetail({
-  params,
-}: {
-  params: { clientId: string; docId: string };
-}) {
+export default function DocumentDetail(props: { params: Promise<{ clientId: string; docId: string }> }) {
   const router = useRouter();
   const { setCurrClient } = useClientStore();
+  const { clientId, docId } = use(props.params);
 
   const [loading, setLoading] = useState(true);
   const [doc, setDoc] = useState<Doc | null>(null);
@@ -183,19 +181,19 @@ export default function DocumentDetail({
   }, []);
 
   useEffect(() => {
-    if (params.clientId) setCurrClient(params.clientId);
-  }, [params.clientId, setCurrClient]);
+    if (clientId) setCurrClient(clientId);
+  }, [clientId, setCurrClient]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         setLoading(true);
-        const d = await fetchDocById(params.clientId, params.docId);
+        const d = await fetchDocById(clientId, docId);
         if (!mounted) return;
         if (!d) {
           toast.error("Document not found");
-          router.replace(`/clients_clone/${params.clientId}/documents`);
+          router.replace(`/clients_clone/${clientId}/documents`);
           return;
         }
         setDoc(d);
@@ -228,7 +226,7 @@ export default function DocumentDetail({
     return () => {
       mounted = false;
     };
-  }, [params.clientId, params.docId, router]);
+  }, [clientId, docId, router]);
 
   const hasUnsavedChanges = useMemo(() => {
     if (mode !== "edit" || !pristineRef.current) return false;
@@ -265,7 +263,7 @@ export default function DocumentDetail({
     const toastId = toast("Saving changes…", { duration: Infinity });
     try {
       const { data } = await axios.patch<{ task_id: string }>(`${process.env.NEXT_PUBLIC_API_URL}/update_document`, {
-        client_id: params.clientId,
+        client_id: clientId,
         doc_id: doc.id,
         data: {
           assets: editedData.assets,
@@ -302,7 +300,7 @@ export default function DocumentDetail({
       setIsSaving(false);
       toast.error(err?.response?.data?.message || err?.message || "Update failed.");
     }
-  }, [doc, editedData, params.clientId]);
+  }, [doc, editedData, clientId]);
 
   const cancelEdit = useCallback(() => {
     if (!pristineRef.current) return;
@@ -355,43 +353,45 @@ export default function DocumentDetail({
               <div className="col-span-2">{doc.bank_id ?? "—"}</div>
 
               <div className="text-muted-foreground">As-of Date</div>
-              <div className="col-span-2">{doc.as_of_date ? new Date(doc.as_of_date).toISOString().slice(0, 10) : "—"}</div>
+              <div className="col-span-2">
+                {doc.as_of_date ? new Date(doc.as_of_date).toISOString().slice(0, 10) : "—"}
+              </div>
 
               <div className="text-muted-foreground">PDF</div>
-                <div className="col-span-2 flex items-center gap-2 min-w-0">
+              <div className="col-span-2 flex items-center gap-2 min-w-0">
                 <FileText className="h-5 w-5 text-red-600 shrink-0" />
                 {doc.pdf_url ? (
                   <a
-                  href={doc.pdf_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline truncate block max-w-[180px]"
-                  title={fileNameFromUrl(doc.pdf_url)}
+                    href={doc.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline truncate block max-w-[180px]"
+                    title={fileNameFromUrl(doc.pdf_url)}
                   >
-                  {fileNameFromUrl(doc.pdf_url)}
+                    {fileNameFromUrl(doc.pdf_url)}
                   </a>
                 ) : (
                   "—"
                 )}
-                </div>
+              </div>
 
-                <div className="text-muted-foreground">Excel</div>
-                <div className="col-span-2 flex items-center gap-2 min-w-0">
+              <div className="text-muted-foreground">Excel</div>
+              <div className="col-span-2 flex items-center gap-2 min-w-0">
                 <FileSpreadsheet className="h-5 w-5 text-green-600 shrink-0" />
                 {doc.excel_url ? (
                   <a
-                  href={doc.excel_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline truncate block max-w-[180px]"
-                  title={fileNameFromUrl(doc.excel_url)}
+                    href={doc.excel_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline truncate block max-w-[180px]"
+                    title={fileNameFromUrl(doc.excel_url)}
                   >
-                  {fileNameFromUrl(doc.excel_url)}
+                    {fileNameFromUrl(doc.excel_url)}
                   </a>
                 ) : (
                   "—"
                 )}
-                </div>
+              </div>
 
               <div className="text-muted-foreground">Created By</div>
               <div className="col-span-2">{doc.createdBy ?? "—"}</div>
@@ -422,7 +422,10 @@ export default function DocumentDetail({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {assetsSummary.items.map((it) => (
-                    <span key={`a-${it.key}`} className="inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-xs bg-muted/40">
+                    <span
+                      key={`a-${it.key}`}
+                      className="inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-xs bg-muted/40"
+                    >
                       {it.key.replace(/_/g, " ")}
                       {it.subCount ? <span className="text-muted-foreground">({it.subCount} subtables)</span> : null}
                       <span className="font-semibold">{it.rowCount}</span>
@@ -437,7 +440,10 @@ export default function DocumentDetail({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {txSummary.items.map((it) => (
-                    <span key={`t-${it.key}`} className="inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-xs bg-muted/40">
+                    <span
+                      key={`t-${it.key}`}
+                      className="inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-xs bg-muted/40"
+                    >
                       {it.key.replace(/_/g, " ")}
                       {it.subCount ? <span className="text-muted-foreground">({it.subCount} subtables)</span> : null}
                       <span className="font-semibold">{it.rowCount}</span>
@@ -529,7 +535,11 @@ export default function DocumentDetail({
               onApiReady={registerGridApi}
             />
           ) : (
-            <RowsTable title={(assetSub ?? assetCat ?? "Assets").replace(/_/g, " ")} rows={rows} columnOrder={block.columnOrder} />
+            <RowsTable
+              title={(assetSub ?? assetCat ?? "Assets").replace(/_/g, " ")}
+              rows={rows}
+              columnOrder={block.columnOrder}
+            />
           );
         })()}
       </div>
@@ -596,7 +606,11 @@ export default function DocumentDetail({
               onApiReady={registerGridApi}
             />
           ) : (
-            <RowsTable title={(txnSub ?? txnCat ?? "Transactions").replace(/_/g, " ")} rows={rows} columnOrder={block.columnOrder} />
+            <RowsTable
+              title={(txnSub ?? txnCat ?? "Transactions").replace(/_/g, " ")}
+              rows={rows}
+              columnOrder={block.columnOrder}
+            />
           );
         })()}
       </div>
@@ -610,8 +624,12 @@ export default function DocumentDetail({
             <Tabs value={leftTab} onValueChange={(v) => setLeftTab(v as any)} className="w-full">
               <TabsList className="grid grid-cols-3 w-full sm:w-auto sm:inline-grid">
                 <TabsTrigger value="info">Info</TabsTrigger>
-                <TabsTrigger value="assets" disabled={!doc.assets?.tableOrder?.length}>Assets</TabsTrigger>
-                <TabsTrigger value="transactions" disabled={!doc.transactions?.tableOrder?.length}>Transactions</TabsTrigger>
+                <TabsTrigger value="assets" disabled={!doc.assets?.tableOrder?.length}>
+                  Assets
+                </TabsTrigger>
+                <TabsTrigger value="transactions" disabled={!doc.transactions?.tableOrder?.length}>
+                  Transactions
+                </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -636,7 +654,7 @@ export default function DocumentDetail({
     return (
       <div className="p-4">
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/clients_clone/${params.clientId}/documents`}>
+          <Link href={`/clients_clone/${clientId}/documents`}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to Documents
           </Link>
         </Button>
@@ -651,7 +669,7 @@ export default function DocumentDetail({
       {/* Top bar */}
       <div className="flex items-center justify-between shrink-0">
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/clients_clone/${params.clientId}/documents`}>
+          <Link href={`/clients_clone/${clientId}/documents`}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back to Documents
           </Link>
