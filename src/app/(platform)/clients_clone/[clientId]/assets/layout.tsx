@@ -151,17 +151,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       setStatus("loading");
       try {
         const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-        // let payload: any;
-        // if (USE_MOCKS) {
-        //   const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
-        //   if (!res.ok) throw new Error(`mock not found: /mocks/overviews.${currClient}.json`);
-        //   payload = await res.json();
-        //   logRoute("/overviews (mock)", payload);
-        // } else {
-        //   const resp = await axios.post(route, { client_id: currClient });
-        //   payload = resp.data;
-        //   logRoute("/overviews", payload);
-        // }
         const resp = await axios.post(route, { client_id: currClient });
         const payload = resp.data;
         console.log("payload is: ", payload);

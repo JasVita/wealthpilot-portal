@@ -1,5 +1,5 @@
 "use client";
-
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useCallback, useContext } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,10 +22,9 @@ import {
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import axios from "axios";
 import { useClientStore } from "@/stores/clients-store";
-import { DataTable } from "@/app/(platform)/clients_clone/documents/data-table";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { logRoute, USE_MOCKS, pill } from "@/lib/dev-logger";
+import { logRoute, pill } from "@/lib/dev-logger";
 import { AssetsExportContext } from "../layout";
 
 ChartJS.register(
@@ -49,16 +48,7 @@ interface OverviewRow {
   };
 }
 
-const assetKeys = [
-  "cash_and_equivalents",
-  "direct_fixed_income",
-  "fixed_income_funds",
-  "direct_equities",
-  "equities_fund",
-  "alternative_fund",
-  "structured_products",
-  "loans",
-] as const;
+const assetKeys = ["cash_and_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities", "equities_fund", "alternative_fund", "structured_products", "loans"] as const;
 type AssetKey = (typeof assetKeys)[number];
 
 const assetLabels: Record<AssetKey, string> = {
@@ -80,8 +70,9 @@ const fmtCurrency = (v: number, digits = 0) =>
     maximumFractionDigits: digits,
   }).format(v);
 
-const pct = (value: number, total: number, digits = 0) =>
-  total > 0 ? `${((value / total) * 100).toFixed(digits)}%` : "0%";
+const pct = (value: number, total: number, digits = 0) => total > 0 ? `${((value / total) * 100).toFixed(digits)}%` : "0%";
+const HOLDINGS_CACHE = new Map<string, OverviewRow[]>();
+const INFLIGHT_HOLDINGS = new Set<string>();
 
 /** map backend aliases -> canonical keys */
 const keyAliases: Record<AssetKey, string[]> = {
@@ -89,26 +80,32 @@ const keyAliases: Record<AssetKey, string[]> = {
   direct_fixed_income: ["directFixedIncome", "direct_fixed_income"],
   fixed_income_funds: ["fixedIncomeFunds", "fixed_income_funds"],
   direct_equities: ["directEquities", "direct_equities"],
-  equities_fund: ["equityFunds", "equities_fund"],
-  alternative_fund: ["alternativeFunds", "alternative_fund"],
+  equities_fund: ["equityFunds", "equities_fund", "equity_funds"],
+  alternative_fund: ["alternativeFunds", "alternative_fund", "alternative_funds"],
   structured_products: ["structuredProducts", "structured_products"],
   loans: ["loans"],
 };
 
 export default function HoldingsPage() {
   const { currClient } = useClientStore();
+  const { clientId: routeClientId } = useParams<{ clientId: string }>();
+
+  // Use store id if present; otherwise fall back to the route param during the first render
+  const effectiveClientId = (currClient ?? routeClientId ?? "").toString();
   const registerExport = useContext(AssetsExportContext);
 
   const [overviews, setOverviews] = useState<OverviewRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const chartRefs = useRef<Record<number, ChartJS | null>>({});
+  const SHOW_PIES = false;
 
   /** latest month (first row from API/mocks) */
   const current = overviews[0] ?? null;
 
   const aggregatedTables = useMemo(() => {
     const acc: Record<AssetKey, any[]> = Object.fromEntries(assetKeys.map((k) => [k, []])) as any;
-    (current?.table_data?.tableData ?? []).forEach((bank: any) => {
+    const banks: any[] = (current?.table_data?.tableData ?? (current as any)?.tableData ?? []);
+    banks.forEach((bank: any) => {
       assetKeys.forEach((k) => {
         const alias = keyAliases[k].find((a) => bank[a] !== undefined);
         if (!alias) return;
@@ -118,7 +115,7 @@ export default function HoldingsPage() {
       });
     });
     return acc;
-  }, [current?.table_data]);
+  }, [current]);
 
   // build pie datasets defensively
   const pieDataSets = useMemo(() => {
@@ -142,44 +139,59 @@ export default function HoldingsPage() {
   }, [current?.pie_chart_data]);
 
   useEffect(() => {
-    if (!currClient) return;
+    if (!effectiveClientId) return;
+    const key = effectiveClientId;
+
+    // 1) hydrate instantly from cache (prevents "No client selected" flicker)
+    const cached = HOLDINGS_CACHE.get(key);
+    if (cached) {
+      setOverviews(cached);
+      setStatus("ready");
+    } else {
+      setOverviews([]);     // clear previous client's rows
+      setStatus("loading"); // show loader immediately for new client
+    }
+
+    // 2) dedupe in-flight work per client
+    if (INFLIGHT_HOLDINGS.has(key)) return;
+    INFLIGHT_HOLDINGS.add(key);
+
+    // 3) fetch with abort/cleanup so the inflight flag is never left set
+    const controller = new AbortController();
+    let alive = true;
+
     (async () => {
-      setStatus("loading");
       try {
-        const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-        let rows: OverviewRow[] = [];
-
-        if (USE_MOCKS) {
-          try {
-            const res = await fetch(`/mocks/overviews.${currClient}.json`, { cache: "no-store" });
-            if (res.ok) {
-              const payload = await res.json();
-              logRoute("/overviews (mock)", payload);
-              rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-            }
-          } catch {
-            /* noop; empty state allowed */
-          }
-        } else {
-          try {
-            const resp = await axios.post(route, { client_id: currClient });
-            const payload = resp.data;
-            logRoute("/overviews", payload);
-            rows = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-          } catch {
-            /* noop; empty state allowed */
-          }
-        }
-
+        const { data } = await axios.post(
+          "/api/clients/assets/holdings",
+          { client_id: key },
+          { signal: controller.signal as any } // axios v1 supports AbortController
+        );
+        if (!alive) return;
+        logRoute("/overviews", data);
+        const rows: OverviewRow[] = Array.isArray(data) ? data : data?.overview_data ?? [];
+        HOLDINGS_CACHE.set(key, rows || []);
         setOverviews(rows || []);
-        setStatus("ready");
-        console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
-      } catch {
-        setOverviews([]);
-        setStatus("ready");
+      } catch (err: any) {
+        // ignore abort errors; show empty only if we had no cache
+        if (!alive) return;
+        if (!cached) setOverviews([]);
+      } finally {
+        // ALWAYS clear inflight, even if unmounted
+        INFLIGHT_HOLDINGS.delete(key);
+        if (alive) setStatus("ready");
+        console.log(...pill("network", "#475569"), "live");
       }
     })();
-  }, [currClient]);
+
+    return () => {
+      alive = false;
+      try { controller.abort(); } catch {}
+      // safety: ensure flag is cleared if we unmount while request is running
+      INFLIGHT_HOLDINGS.delete(key);
+    };
+  }, [effectiveClientId]);
+
 
   // PDF helpers (unchanged)
   const tableForPdf = useCallback(
@@ -190,7 +202,7 @@ export default function HoldingsPage() {
         (r as any).name ?? "",
         (r as any).currency ?? "",
         (r as any).units ?? "",
-        fmtCurrency((r as any).balanceUsd ?? 0),
+        fmtCurrency((r as any).balanceUsd ?? (r as any).balance ?? 0),
       ]);
       return { columns, body, title: assetLabels[key] };
     },
@@ -272,6 +284,14 @@ export default function HoldingsPage() {
     [aggregatedTables, activeAssetTab, visibleAssetKeys]
   );
 
+  const hasHoldings = visibleAssetKeys.length > 0;
+
+  // If no holdings, show a clean message (no sticky bar)
+  if (status === "ready" && !hasHoldings) {
+    return <div className="p-6 text-muted-foreground">No holdings for this client.</div>;
+  }
+
+
   // ------------------------------- UI -------------------------------
 
   if (status === "idle") {
@@ -313,7 +333,7 @@ export default function HoldingsPage() {
   return (
     <div className="flex flex-col gap-4">
       {/* Pies */}
-      {pieCards.map((meta, idx) => {
+      {SHOW_PIES && pieCards.map((meta, idx) => {
         const ds = pieDataSets[idx];
         if (!ds) return null;
 
@@ -352,7 +372,6 @@ export default function HoldingsPage() {
                   </div>
                 </div>
 
-                {/* Summary table styled like Documents page */}
                 <div className="overflow-hidden">
                   <div className="rounded-xl border bg-card">
                     <Table className="text-sm">
@@ -362,8 +381,8 @@ export default function HoldingsPage() {
                             {meta.title === "Bank Exposure"
                               ? "Bank"
                               : meta.title === "Asset Breakdown"
-                              ? "Asset"
-                              : "Currency"}
+                                ? "Asset"
+                                : "Currency"}
                           </TableHead>
                           <TableHead className="w-1/4 text-right uppercase tracking-wide text-[11px] text-muted-foreground">
                             {showPct ? "Weight" : "Value"}
@@ -392,87 +411,87 @@ export default function HoldingsPage() {
             </CardContent>
           </Card>
         );
-      })}
+      }
 
-      {/* Sticky tabs — same scheme as other tabs (muted rail + active pill) */}
-      <div
-        className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px"
-        style={{ top: -16 }}
-      >
-        <div className="px-4">
-          <Tabs
-            value={activeAssetTab}
-            onValueChange={(v) => setActiveAssetTab(v as AssetKey)}
-            className="w-full"
-          >
-            <TabsList className="grid w-full sm:w-auto sm:inline-grid grid-cols-2 sm:grid-cols-6">
-              {visibleAssetKeys.map((k) => (
-                <TabsTrigger key={k} value={k}>
-                  {assetLabels[k]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+      )}
+
+      {/* Sticky tabs — only when we actually have holdings */}
+      {hasHoldings && (
+        <div
+          className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px"
+          style={{ top: -16 }}
+        >
+          <div className="px-4">
+            <Tabs value={activeAssetTab} onValueChange={(v) => setActiveAssetTab(v as AssetKey)} className="w-full">
+              {/* xl: 8 in one row; md–xl: 4+4; <md: 2 per row */}
+              <TabsList className="grid w-full gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
+                {visibleAssetKeys.map((k) => (
+                  <TabsTrigger
+                    key={k}
+                    value={k}
+                    title={assetLabels[k]}
+                    className="min-w-0 truncate text-xs md:text-sm px-3 py-2"
+                  >
+                    {assetLabels[k]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* Asset table — only when we actually have holdings */}
+      {hasHoldings && (
+        <div className="px-4">
+          {selectedRows.length ? (
+            <div className="rounded-md border overflow-hidden">
+              <Table className="text-sm">
+                <TableHeader className="bg-background">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="min-w-[120px]">Bank</TableHead>
+                    <TableHead className="min-w-[220px]">Name</TableHead>
+                    <TableHead className="min-w-[100px]">Currency</TableHead>
+                    <TableHead className="min-w-[100px]">Units</TableHead>
+                    <TableHead className="min-w-[160px] text-right">Balance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedRows.map((r: any, i: number) => {
+                    const units =
+                      typeof r?.units === "number"
+                        ? r.units.toLocaleString("en-US", { maximumFractionDigits: 4 })
+                        : (r?.units ?? "—");
 
-      {/* Only the selected table is rendered */}
-      {/* Only the selected table is rendered — styled like Documents page (no inner scroll) */}
-      {/* Asset table only (no title/description header) */}
-      <div className="px-4">
-        {selectedRows.length ? (
-          <div className="rounded-md border overflow-hidden">
-            <Table className="text-sm">
-              <TableHeader className="bg-background">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="min-w-[120px]">Bank</TableHead>
-                  <TableHead className="min-w-[220px]">Name</TableHead>
-                  <TableHead className="min-w-[100px]">Currency</TableHead>
-                  <TableHead className="min-w-[100px]">Units</TableHead>
-                  <TableHead className="min-w-[160px] text-right">Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {selectedRows.map((r: any, i: number) => {
-                  const units =
-                    typeof r?.units === "number"
-                      ? r.units.toLocaleString("en-US", { maximumFractionDigits: 4 })
-                      : (r?.units ?? "—");
+                    const balance =
+                      typeof r?.balanceUsd === "number"
+                        ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(r.balanceUsd)
+                        : typeof r?.balance === "number"
+                          ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(r.balance)
+                          : typeof r?.balance_in_currency === "number"
+                            ? `${r?.currency ?? ""} ${r.balance_in_currency.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+                            : "—";
 
-                  const balance =
-                    typeof r?.balanceUsd === "number"
-                      ? new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "USD",
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        }).format(r.balanceUsd)
-                      : typeof r?.balance_in_currency === "number"
-                      ? `${r?.currency ?? ""} ${r.balance_in_currency.toLocaleString("en-US", {
-                          maximumFractionDigits: 2,
-                        })}`
-                      : "—";
-
-                  return (
-                    <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
-                      <TableCell className="py-3">{r?.bank ?? "—"}</TableCell>
-                      <TableCell className="py-3">{r?.name ?? "—"}</TableCell>
-                      <TableCell className="py-3">{r?.currency ?? "—"}</TableCell>
-                      <TableCell className="py-3">{units}</TableCell>
-                      <TableCell className="py-3 text-right">{balance}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground py-8">
-            No rows for {assetLabels[activeAssetTab]}.
-          </div>
-        )}
-      </div>
+                    return (
+                      <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
+                        <TableCell className="py-3">{r?.bank ?? "—"}</TableCell>
+                        <TableCell className="py-3">{r?.name ?? "—"}</TableCell>
+                        <TableCell className="py-3">{r?.currency ?? "—"}</TableCell>
+                        <TableCell className="py-3">{units}</TableCell>
+                        <TableCell className="py-3 text-right">{balance}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground py-8">
+              No rows for {assetLabels[activeAssetTab]}.
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

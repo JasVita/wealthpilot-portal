@@ -153,7 +153,7 @@ export default function ProfilePage() {
 
     let gotLive = false;
 
-    // 1) Try LIVE (DB) first
+    // 1) Try LIVE (DB) first: curl -s -X POST http://localhost:3001/api/clients/profile   -H 'content-type: application/json'   -d '{"client_id":44}'
     try {
       const res = await fetch("/api/clients/profile", {
         method: "POST",
