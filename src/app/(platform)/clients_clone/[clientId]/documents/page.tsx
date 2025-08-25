@@ -168,22 +168,21 @@ export default function DocumentsPage() {
     async function fetchDocs() {
       try {
         setLoading(true);
-        const { data } = await axios.post<{
-          status: string;
-          documents: Doc[];
-          message: string;
-        }>(`${process.env.NEXT_PUBLIC_API_URL}/documents`, {
-          client_id: currClient,
-        });
+        const { data } = await axios.post<{ status: string; documents: Doc[] }>(
+          "/api/clients/documents",            // ⬅️ internal Next route
+          { client_id: currClient }
+        );
         setDocs(data.documents || []);
       } catch (err) {
         console.error("Failed to fetch documents", err);
+        setDocs([]);
       } finally {
         setLoading(false);
       }
     }
     if (currClient) fetchDocs();
   }, [currClient]);
+
 
   const docsWithFolder = useMemo(
     () => docs.map((doc) => ({ ...doc, __folder: resolveFolder(doc) })),
@@ -306,15 +305,20 @@ export default function DocumentsPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <FileTypeIcon filename={safeFilename} />
-                            <Link
-                              href={`/clients_clone/${encodeURIComponent(
-                                String(currClient)
-                              )}/documents/${encodeURIComponent(String(d.id ?? label))}`}
-                              className="text-primary hover:underline"
-                              title={safeFilename}
-                            >
-                              {safeFilename || label}
-                            </Link>
+                            {d.id ? (
+                              <Link
+                                href={`/clients_clone/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}`}
+                                className="text-primary hover:underline"
+                                title={safeFilename}
+                                prefetch={false}
+                              >
+                                {safeFilename || label}
+                              </Link>
+                            ) : (
+                              <span className="text-muted-foreground" title={safeFilename}>
+                                {safeFilename || label}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

@@ -83,14 +83,97 @@ function summarizeRoot(root?: TableRoot | null) {
   return { categories: tableOrder.length, items, totalRows };
 }
 
-async function fetchDocById(clientId: string, docId: string): Promise<Doc | null> {
-  const { data } = await axios.post<{ status: string; documents: Doc[]; message?: string }>(
-    `${process.env.NEXT_PUBLIC_API_URL}/documents`,
-    { client_id: clientId }
-  );
-  const docs: Doc[] = data?.documents ?? [];
-  return docs.find((d) => String(d.id) === String(docId)) ?? null;
+// --- helpers to normalize API payloads into TableRoot -----------------
+function rowsFromHeadersAndArrays(headers: string[], rawRows: any[][]): Record<string, any>[] {
+  return rawRows.map((arr) => {
+    const obj: Record<string, any> = {};
+    headers.forEach((h, i) => (obj[h] = arr[i]));
+    return obj;
+  });
 }
+
+function toTableBlockFromArrayOfObjects(rows: Record<string, any>[]): TableBlock {
+  const first = rows?.[0] ?? {};
+  const columnOrder = Object.keys(first);
+  return { columnOrder, rows: rows ?? [] };
+}
+
+function toTableRootFromTablesArray(tables: Array<{ table_name: string; headers?: string[]; rows: any[] }>): TableRoot {
+  const tableOrder: string[] = [];
+  const root: any = { tableOrder };
+
+  for (const t of tables) {
+    const name = t.table_name || "Table";
+    tableOrder.push(name);
+    if (Array.isArray(t.headers) && Array.isArray(t.rows) && Array.isArray(t.rows[0])) {
+      // shape: headers + rows-of-arrays → convert to array of objects
+      root[name] = {
+        columnOrder: t.headers,
+        rows: rowsFromHeadersAndArrays(t.headers, t.rows as any[][]),
+      } as TableBlock;
+    } else {
+      // already array of objects
+      root[name] = toTableBlockFromArrayOfObjects((t.rows ?? []) as any[]);
+    }
+  }
+  return root as TableRoot;
+}
+
+function normalizeToTableRoot(payload: any): TableRoot | null {
+  if (!payload) return null;
+
+  // Old shape: { tables: [ { table_name, headers?, rows } ] }
+  if (Array.isArray(payload?.tables)) {
+    return toTableRootFromTablesArray(payload.tables);
+  }
+
+  // New shape: object → { "Section": [ {..row..}, ... ], ... }
+  if (payload && typeof payload === "object") {
+    const keys = Object.keys(payload);
+    const tableOrder: string[] = [];
+    const root: any = { tableOrder };
+
+    for (const k of keys) {
+      const arr = payload[k];
+      if (!Array.isArray(arr)) continue;
+      tableOrder.push(k);
+      root[k] = toTableBlockFromArrayOfObjects(arr as any[]);
+    }
+
+    // If nothing collected, treat as empty
+    if (!tableOrder.length) return null;
+    return root as TableRoot;
+  }
+
+  return null;
+}
+
+// --- fetcher that uses the API and normalizes assets/transactions -----
+async function fetchDocById(_clientId: string, docId: string): Promise<Doc | null> {
+  const { data } = await axios.get(`/api/clients/documents/${encodeURIComponent(docId)}?sections=both`);
+
+  // 🔎 Debug the raw server payload in DevTools (F12 → Console)
+  console.log("[doc details payload]", data);
+
+  if (!data?.info) return null;
+
+  const assetsRoot        = normalizeToTableRoot(data.assets);
+  const transactionsRoot  = normalizeToTableRoot(data.transactions);
+
+  return {
+    id: String(data.info.id),
+    bankname: data.info.bank_name ?? data.info.bankname ?? "",
+    as_of_date: data.info.as_of_date ?? "",
+    pdf_url: data.info.pdf_url ?? null,
+    excel_url: data.info.excel_url ?? null,
+    account_number: data.info.account_number ?? null,
+    bank_id: data.info.bank_id ?? null,
+    createdAt: data.info.created_at ?? null,
+    assets: assetsRoot,               // ✅ normalized to TableRoot
+    transactions: transactionsRoot,   // ✅ normalized to TableRoot
+  };
+}
+
 
 /* ============================= Simple ShadCN Table (view mode) ============================= */
 function toHeaders(rows: Record<string, any>[], columnOrder?: string[]) {
