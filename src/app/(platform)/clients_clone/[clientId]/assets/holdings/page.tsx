@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { UsersRound } from "lucide-react";
 import { Doughnut } from "react-chartjs-2";
 import {
@@ -62,13 +63,24 @@ const assetLabels: Record<AssetKey, string> = {
   loans: "Loans",
 };
 
-const fmtCurrency = (v: number, digits = 0) =>
-  new Intl.NumberFormat("en-US", {
+const fmtCurrency = (v: number) => {
+  const hasCents = Number.isFinite(v) && Math.round((v * 100) % 100) !== 0;
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(v);
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(v || 0);
+};
+
+// (optional) for non-USD plain numbers like balance_in_currency
+const fmtNumberSmart = (v: number) => {
+  const hasCents = Number.isFinite(v) && Math.round((v * 100) % 100) !== 0;
+  return (v ?? 0).toLocaleString("en-US", {
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  });
+};
 
 const pct = (value: number, total: number, digits = 0) => total > 0 ? `${((value / total) * 100).toFixed(digits)}%` : "0%";
 const HOLDINGS_CACHE = new Map<string, OverviewRow[]>();
@@ -101,6 +113,10 @@ export default function HoldingsPage() {
 
   /** latest month (first row from API/mocks) */
   const current = overviews[0] ?? null;
+  const [months, setMonths] = useState<string[]>([]);
+  // currently selected month "YYYY-MM" or null
+  const [selMonth, setSelMonth] = useState<string | null>(null);
+  const [emptyMonths, setEmptyMonths] = useState<Set<string>>(new Set());
 
   const aggregatedTables = useMemo(() => {
     const acc: Record<AssetKey, any[]> = Object.fromEntries(assetKeys.map((k) => [k, []])) as any;
@@ -137,47 +153,77 @@ export default function HoldingsPage() {
       };
     });
   }, [current?.pie_chart_data]);
-
+  
+  // select month 
   useEffect(() => {
     if (!effectiveClientId) return;
-    const key = effectiveClientId;
 
-    // 1) hydrate instantly from cache (prevents "No client selected" flicker)
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await axios.get("/api/clients/assets/holdings/months", { params: { client_id: effectiveClientId } });
+        if (!alive) return;
+        const list: string[] = Array.isArray(data?.months) ? data.months : [];
+        setMonths(list);
+        // pick latest month if none selected or if client changed
+        setSelMonth(list.length ? list[0] : null);
+      } catch {
+        if (!alive) return;
+        setMonths([]);
+        setSelMonth(null);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [effectiveClientId]);
+
+  // fetch overviews when client or month changes
+  useEffect(() => {
+    if (!effectiveClientId) return;
+
+    // Build a key that includes the month selection
+    const key = `${effectiveClientId}:${selMonth ?? "auto"}`;
+
+    // hydrate from cache
     const cached = HOLDINGS_CACHE.get(key);
     if (cached) {
       setOverviews(cached);
       setStatus("ready");
     } else {
-      setOverviews([]);     // clear previous client's rows
-      setStatus("loading"); // show loader immediately for new client
+      setOverviews([]);
+      setStatus("loading");
     }
 
-    // 2) dedupe in-flight work per client
     if (INFLIGHT_HOLDINGS.has(key)) return;
     INFLIGHT_HOLDINGS.add(key);
 
-    // 3) fetch with abort/cleanup so the inflight flag is never left set
     const controller = new AbortController();
     let alive = true;
 
     (async () => {
       try {
-        const { data } = await axios.post(
-          "/api/clients/assets/holdings",
-          { client_id: key },
-          { signal: controller.signal as any } // axios v1 supports AbortController
-        );
+        // if selMonth exists, split to year/month; else let backend pick latest non-empty
+        let payload: any = { client_id: effectiveClientId };
+        if (selMonth) {
+          const [y, m] = selMonth.split("-").map(Number);
+          if (Number.isFinite(y) && Number.isFinite(m)) {
+            payload.year = y;
+            payload.month = m;
+          }
+        }
+
+        const { data } = await axios.post("/api/clients/assets/holdings", payload, {
+          signal: controller.signal as any
+        });
+
         if (!alive) return;
-        logRoute("/overviews", data);
         const rows: OverviewRow[] = Array.isArray(data) ? data : data?.overview_data ?? [];
         HOLDINGS_CACHE.set(key, rows || []);
         setOverviews(rows || []);
-      } catch (err: any) {
-        // ignore abort errors; show empty only if we had no cache
+      } catch {
         if (!alive) return;
         if (!cached) setOverviews([]);
       } finally {
-        // ALWAYS clear inflight, even if unmounted
         INFLIGHT_HOLDINGS.delete(key);
         if (alive) setStatus("ready");
         console.log(...pill("network", "#475569"), "live");
@@ -187,10 +233,10 @@ export default function HoldingsPage() {
     return () => {
       alive = false;
       try { controller.abort(); } catch {}
-      // safety: ensure flag is cleared if we unmount while request is running
       INFLIGHT_HOLDINGS.delete(key);
     };
-  }, [effectiveClientId]);
+  }, [effectiveClientId, selMonth]);
+
 
 
   // PDF helpers (unchanged)
@@ -202,7 +248,13 @@ export default function HoldingsPage() {
         (r as any).name ?? "",
         (r as any).currency ?? "",
         (r as any).units ?? "",
-        fmtCurrency((r as any).balanceUsd ?? (r as any).balance ?? 0),
+        fmtCurrency(
+          typeof (r as any).balanceUsd === "number"
+            ? (r as any).balanceUsd
+            : typeof (r as any).balance === "number"
+            ? (r as any).balance
+            : 0
+        ),
       ]);
       return { columns, body, title: assetLabels[key] };
     },
@@ -275,8 +327,10 @@ export default function HoldingsPage() {
   const [activeAssetTab, setActiveAssetTab] = useState<AssetKey>("cash_and_equivalents");
 
   useEffect(() => {
-    if (visibleAssetKeys.length === 0) return;
-    if (!visibleAssetKeys.includes(activeAssetTab)) setActiveAssetTab(visibleAssetKeys[0]);
+    if (!visibleAssetKeys.length) return;
+    if (!visibleAssetKeys.includes(activeAssetTab)) {
+      setActiveAssetTab(visibleAssetKeys[0]);
+    }
   }, [visibleAssetKeys, activeAssetTab]);
 
   const selectedRows = useMemo(
@@ -287,9 +341,44 @@ export default function HoldingsPage() {
   const hasHoldings = visibleAssetKeys.length > 0;
 
   // If no holdings, show a clean message (no sticky bar)
-  if (status === "ready" && !hasHoldings) {
-    return <div className="p-6 text-muted-foreground">No holdings for this client.</div>;
-  }
+  // if (status === "ready" && !hasHoldings) {
+  //   return <div className="p-6 text-muted-foreground">No holdings for this client.</div>;
+  // }
+  useEffect(() => {
+    if (status !== "ready" || !selMonth) return;
+    setEmptyMonths((prev) => {
+      const next = new Set(prev);
+      if (hasHoldings) next.delete(selMonth); else next.add(selMonth);
+      return next;
+    });
+  }, [status, selMonth, hasHoldings]);
+
+  {status === "ready" && selMonth && !hasHoldings && (
+    <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-3">
+      No holdings for <span className="font-medium">{selMonth}</span>.
+      {months.length > 0 && (
+        <button
+          type="button"
+          className="underline underline-offset-2 hover:text-foreground"
+          onClick={() => setSelMonth(months[0])} // jump to latest (first = newest)
+        >
+          Jump to latest
+        </button>
+      )}
+      {(() => {
+        const idx = months.indexOf(selMonth);
+        return idx >= 0 && idx < months.length - 1 ? (
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-foreground"
+            onClick={() => setSelMonth(months[idx + 1])} // previous (older) month
+          >
+            Previous month
+          </button>
+        ) : null;
+      })()}
+    </div>
+  )}
 
 
   // ------------------------------- UI -------------------------------
@@ -441,6 +530,26 @@ export default function HoldingsPage() {
         </div>
       )}
 
+      {/* Period selector (YYYY-MM) — show even if this month is empty */}
+      {months.length > 0 && (
+        <div className="px-4 flex items-center gap-3">
+          <div className="text-sm text-muted-foreground">Period</div>
+          <Select value={selMonth ?? undefined} onValueChange={setSelMonth}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map((ym) => (
+                <SelectItem key={ym} value={ym}>
+                  {ym}{emptyMonths.has(ym) ? " (empty)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+
       {/* Asset table — only when we actually have holdings */}
       {hasHoldings && (
         <div className="px-4">
@@ -465,12 +574,12 @@ export default function HoldingsPage() {
 
                     const balance =
                       typeof r?.balanceUsd === "number"
-                        ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(r.balanceUsd)
+                        ? fmtCurrency(r.balanceUsd)
                         : typeof r?.balance === "number"
-                          ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(r.balance)
-                          : typeof r?.balance_in_currency === "number"
-                            ? `${r?.currency ?? ""} ${r.balance_in_currency.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
-                            : "—";
+                        ? fmtCurrency(r.balance)
+                        : typeof r?.balance_in_currency === "number"
+                        ? `${r?.currency ?? ""} ${fmtNumberSmart(r.balance_in_currency)}`
+                        : "—";
 
                     return (
                       <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
