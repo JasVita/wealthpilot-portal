@@ -86,6 +86,9 @@ const pct = (value: number, total: number, digits = 0) => total > 0 ? `${((value
 const HOLDINGS_CACHE = new Map<string, OverviewRow[]>();
 const INFLIGHT_HOLDINGS = new Set<string>();
 
+const MONTHS_CACHE = new Map<string, string[]>();  // clientId -> ["YYYY-MM", ...]
+const INFLIGHT_MONTHS = new Set<string>();  
+
 /** map backend aliases -> canonical keys */
 const keyAliases: Record<AssetKey, string[]> = {
   cash_and_equivalents: ["cashAndEquiv", "cash_and_equivalents", "cashAndEquivalents"],
@@ -114,8 +117,8 @@ export default function HoldingsPage() {
   /** latest month (first row from API/mocks) */
   const current = overviews[0] ?? null;
   const [months, setMonths] = useState<string[]>([]);
-  // currently selected month "YYYY-MM" or null
   const [selMonth, setSelMonth] = useState<string | null>(null);
+  const [monthsReady, setMonthsReady] = useState(false);
   const [emptyMonths, setEmptyMonths] = useState<Set<string>>(new Set());
 
   const aggregatedTables = useMemo(() => {
@@ -158,33 +161,66 @@ export default function HoldingsPage() {
   useEffect(() => {
     if (!effectiveClientId) return;
 
+    setMonthsReady(false);
+    const key = effectiveClientId;
+
+    // serve cached months instantly
+    const cached = MONTHS_CACHE.get(key);
+    if (cached) {
+      setMonths(cached);
+      setSelMonth((prev) => (prev && cached.includes(prev) ? prev : cached[0] ?? null));
+      setMonthsReady(true);
+      return;
+    }
+
+    // de-dupe in-flight
+    if (INFLIGHT_MONTHS.has(key)) return;
+    INFLIGHT_MONTHS.add(key);
+
+    const ctl = new AbortController();
     let alive = true;
+
     (async () => {
       try {
-        const { data } = await axios.get("/api/clients/assets/holdings/months", { params: { client_id: effectiveClientId } });
+        const { data } = await axios.get("/api/clients/assets/holdings/months", {
+          params: { client_id: key },
+          signal: ctl.signal as any,
+        });
         if (!alive) return;
         const list: string[] = Array.isArray(data?.months) ? data.months : [];
+        MONTHS_CACHE.set(key, list);
         setMonths(list);
-        // pick latest month if none selected or if client changed
         setSelMonth(list.length ? list[0] : null);
       } catch {
         if (!alive) return;
         setMonths([]);
         setSelMonth(null);
+      } finally {
+        INFLIGHT_MONTHS.delete(key);
+        if (alive) setMonthsReady(true);
       }
     })();
 
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+      try { ctl.abort(); } catch {}
+      INFLIGHT_MONTHS.delete(key);
+    };
   }, [effectiveClientId]);
+
 
   // fetch overviews when client or month changes
   useEffect(() => {
     if (!effectiveClientId) return;
 
-    // Build a key that includes the month selection
-    const key = `${effectiveClientId}:${selMonth ?? "auto"}`;
+    // wait until months resolved – prevents the "auto" POST before selMonth exists
+    if (!monthsReady) return;
 
-    // hydrate from cache
+    const wantAuto = months.length === 0;     // client truly has no months
+    if (!wantAuto && !selMonth) return;       // months exist but nothing selected yet
+
+    const key = `${effectiveClientId}:${wantAuto ? "auto" : selMonth}`;
+
     const cached = HOLDINGS_CACHE.get(key);
     if (cached) {
       setOverviews(cached);
@@ -202,21 +238,16 @@ export default function HoldingsPage() {
 
     (async () => {
       try {
-        // if selMonth exists, split to year/month; else let backend pick latest non-empty
-        let payload: any = { client_id: effectiveClientId };
-        if (selMonth) {
+        const payload: any = { client_id: effectiveClientId };
+        if (!wantAuto && selMonth) {
           const [y, m] = selMonth.split("-").map(Number);
-          if (Number.isFinite(y) && Number.isFinite(m)) {
-            payload.year = y;
-            payload.month = m;
-          }
+          payload.year = y; payload.month = m;
         }
-
         const { data } = await axios.post("/api/clients/assets/holdings", payload, {
-          signal: controller.signal as any
+          signal: controller.signal as any,
         });
-
         if (!alive) return;
+        logRoute("/overviews", data);
         const rows: OverviewRow[] = Array.isArray(data) ? data : data?.overview_data ?? [];
         HOLDINGS_CACHE.set(key, rows || []);
         setOverviews(rows || []);
@@ -235,7 +266,8 @@ export default function HoldingsPage() {
       try { controller.abort(); } catch {}
       INFLIGHT_HOLDINGS.delete(key);
     };
-  }, [effectiveClientId, selMonth]);
+  }, [effectiveClientId, monthsReady, months, selMonth]);
+
 
 
 
