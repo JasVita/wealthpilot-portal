@@ -16,10 +16,25 @@ export interface PieChartData {
   }[];
 }
 
+export interface ClientSummary {
+  code?: string;
+  total_custodians?: number;
+  net_assets_usd?: number;
+  total_assets_usd?: number;
+  total_debts_usd?: number;
+  rm?: string;
+  mandate_type?: string;
+  risk_profile?: number;
+  status?: string;
+  app_status?: string;
+  starred?: boolean;
+}
+
 export interface Client {
   id: string;
   name: string;
-  pieChartData: PieChartData | null; // NEW
+  pieChartData: PieChartData | null;
+  summary?: ClientSummary;
   news: News | null;
   alerts: Alerts | null;
   overviews: Overview[];
@@ -35,6 +50,10 @@ interface ClientState {
   addClient: (name: string) => void;
   deleteClient: (id: string) => void;
   updateClient: (id: string, partial: Partial<Omit<Client, "id">>) => void;
+
+  // ⬇️ NEW: patch fields under client.summary (used by the Profile edit dialogs)
+  updateClientSummary: (id: string, patch: Record<string, any>) => void;
+
   loadClients: () => Promise<void>;
   resetStore: () => void;
 }
@@ -59,61 +78,52 @@ export const useClientStore = create<ClientState>()(
 
       addClient: async (name: string) => {
         const { id: user_id } = useUserStore.getState();
-
-        if (!user_id) {
-          throw new Error("User not logged in – cannot add client");
-        }
+        if (!user_id) throw new Error("User not logged in – cannot add client");
 
         const tempId = `tmp-${crypto.randomUUID()}`;
         const tempData: Client = {
           id: tempId,
           name,
           pieChartData: null,
+          summary: {},
           news: null,
           alerts: null,
           overviews: [],
         };
-        const prevState = get(); // snapshot for rollback
+        const prevState = get();
 
         get().setClient(tempData);
 
         try {
-          // const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL2}/add-client`, { name, user_id });
           const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/add-client`, { name, user_id });
-
           if (res.status !== 201 && res.status !== 200) throw new Error(res.statusText);
-
           const saved: { id: string } = res.data;
 
           set((s) => {
-            const { [tempId]: _, ...rest } = s.clients;
+            const { [tempId]: _omit, ...rest } = s.clients;
             return {
               clients: { ...rest, [saved.id]: { ...tempData, id: saved.id } },
-              order: s.order.map((id) => (id === tempId ? saved.id : id)),
+              order: s.order.map((x) => (x === tempId ? saved.id : x)),
             };
           });
         } catch (err) {
-          set(prevState); // rollback entire state
+          set(prevState);
           get().deleteClient(tempId);
           throw err;
         }
       },
 
       deleteClient: async (id: string) => {
-        const prev = get(); /* snapshot for rollback */
+        const prev = get();
         set((s) => {
-          /* optimistic remove    */
           const { [id]: _omit, ...rest } = s.clients;
           return { clients: rest, order: s.order.filter((x) => x !== id) };
         });
 
         try {
           const { id: user_id } = useUserStore.getState();
-          await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/client/${id}`, {
-            params: { user_id },
-          });
+          await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/client/${id}`, { params: { user_id } });
         } catch (err) {
-          /* rollback on failure  */
           set(prev);
           throw err;
         }
@@ -121,67 +131,135 @@ export const useClientStore = create<ClientState>()(
 
       updateClient: async (id: string, partial: Partial<Omit<Client, "id">>) => {
         const prev = get();
-        set((s) => ({
-          clients: { ...s.clients, [id]: { ...s.clients[id], ...partial } },
-        })); /* optimistic update    */
+        set((s) => ({ clients: { ...s.clients, [id]: { ...s.clients[id], ...partial } } }));
 
         try {
           const { id: user_id } = useUserStore.getState();
-          await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/client/${id}`, {
-            user_id,
-            ...partial,
-          });
+          await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/client/${id}`, { user_id, ...partial });
         } catch (err) {
-          set(prev); /* rollback */
+          set(prev);
           throw err;
         }
       },
 
+      // ⬇️ NEW: local patch for summary fields (no API call needed)
+      updateClientSummary: (id, patch) =>
+        set((state) => {
+          const prev = state.clients[id];
+          if (!prev) return state;
+          return {
+            clients: {
+              ...state.clients,
+              [id]: {
+                ...prev,
+                summary: { ...(prev.summary ?? {}), ...(patch ?? {}) } as ClientSummary,
+              },
+            },
+          };
+        }),
+
+      // ---------- UPDATED: pulls from API, then (optionally) merges /mocks/clients.json ----------
       loadClients: async () => {
         const { id: user_id } = useUserStore.getState();
-        if (!user_id) throw new Error("User not logged in – cannot fetch clients");
 
-        type Row = { id: string; name: string; pie_chart_data: PieChartData | null };
+        let apiList: any[] = [];
+        if (user_id) {
+          try {
+            const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/clients`, { params: { user_id } });
+            if (res.status === 200) {
+              apiList = res.data?.clients ?? res.data ?? [];
+            }
+          } catch (e) {
+            console.warn("API clients fetch failed, will still try local mocks:", e);
+          }
+        } else {
+          console.warn("No user logged in – skipping API clients; will still try local mocks.");
+        }
 
-        const res = await axios.get<{ clients: Row[] }>(`${process.env.NEXT_PUBLIC_API_URL}/clients`, {
-          params: { user_id },
-        });
-        if (res.status !== 200) throw new Error(res.statusText);
+        // Try to read /public/mocks/clients.json, ignore if missing
+        let mockList: any[] = [];
+        try {
+          const resp = await fetch("/mocks/clients.json", { cache: "no-store" });
+          if (resp.ok) {
+            mockList = await resp.json();
+          }
+        } catch {
+          /* ignore – file may not exist */
+        }
 
-        const list = res.data.clients;
+        // Merge: API rows take precedence; add mock rows that don't exist, or fill missing summary fields.
+        const byId: Record<string, any> = {};
+        for (const row of apiList) {
+          const id = String(row.id);
+          byId[id] = { ...row, id };
+        }
+        for (const row of mockList) {
+          const id = String(row.id);
+          if (!byId[id]) {
+            byId[id] = { ...row, id };
+          } else {
+            // enrich summary-like fields if API didn't send them
+            byId[id] = { ...row, ...byId[id], id };
+          }
+        }
+
+        const mergedList = Object.values(byId);
 
         set(() => {
           const clients: Record<string, Client> = {};
           const order: string[] = [];
 
-          for (const { id, name, pie_chart_data } of list) {
-            clients[id] = {
+          for (const row of mergedList) {
+            const {
               id,
               name,
-              pieChartData: pie_chart_data, // ← stash it
+              pie_chart_data = null,
+              code,
+              total_custodians,
+              net_assets_usd,
+              total_assets_usd,
+              total_debts_usd,
+              rm,
+              mandate_type,
+              risk_profile,
+              status,
+              app_status,
+              starred,
+            } = row;
+
+            clients[String(id)] = {
+              id: String(id),
+              name,
+              pieChartData: pie_chart_data,
+              summary: {
+                code,
+                total_custodians,
+                net_assets_usd,
+                total_assets_usd,
+                total_debts_usd,
+                rm,
+                mandate_type,
+                risk_profile,
+                status,
+                app_status,
+                starred,
+              },
               news: null,
               alerts: null,
               overviews: [],
             };
-            order.push(id);
+            order.push(String(id));
           }
+
           return { clients, order };
         });
       },
 
       resetStore: () => {
-        // 1) clear Zustand state in memory
         set({ clients: {}, order: [], currClient: "" });
-
-        // 2) remove the persisted snapshot (safe for SSR)
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("clients-storage");
-        }
+        if (typeof window !== "undefined") localStorage.removeItem("clients-storage");
       },
     }),
-    {
-      name: "clients-storage",
-      version: 1,
-    }
+    { name: "clients-storage", version: 3 }
   )
 );

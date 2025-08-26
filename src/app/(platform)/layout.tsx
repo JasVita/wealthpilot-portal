@@ -1,5 +1,8 @@
+// src/app/(platform)/layout.tsx
 "use client";
-import { ReactNode, useState } from "react";
+
+import { ReactNode, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -25,12 +28,16 @@ import { toast } from "sonner";
 import { uploadFileToS3 } from "@/lib/s3Upload";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(false);
   const { clearStorage } = useWealthStore();
   const { clients, order, currClient, setCurrClient, loadClients } = useClientStore();
   const { id: user_id } = useUserStore();
+
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -38,6 +45,30 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     failed: any[];
   }>({ done: 0, total: 0, state: "PENDING", failed: [] });
 
+  /* ──────────────────────────────────────────────────────────────
+   * Route change when user picks a different client
+   *  - If already under /clients_clone/[id]/..., replace the [id] segment
+   *  - Else navigate to /clients_clone/<id>/assets/holdings
+   *  - Always keep store in sync
+   * ────────────────────────────────────────────────────────────── */
+  function handleClientChange(nextId: string) {
+    setCurrClient(nextId);
+
+    if (pathname?.startsWith("/clients_clone/")) {
+      const parts = pathname.split("/"); // ["", "clients_clone", "<id>", ...]
+      if (parts.length >= 3) {
+        parts[2] = nextId; // swap the [clientId] segment
+        router.push(parts.join("/"));
+        return;
+      }
+    }
+
+    router.push(`/clients_clone/${nextId}/assets/holdings`);
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+   * Upload pipeline (unchanged)
+   * ────────────────────────────────────────────────────────────── */
   const isFinished = (state: string) =>
     state === "SUCCESS" || state === "PARTIAL_SUCCESS" || state === "FAILURE" || state === "REVOKED";
 
@@ -46,7 +77,6 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       try {
         const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/upload/${taskId}`);
 
-        // ⬆️ update store
         setProgress({
           done: data.done ?? 0,
           total: numFlies,
@@ -62,7 +92,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             setStatus("success");
           } else if (data.state === "PARTIAL_SUCCESS") {
             toast.warning(`Finished with some errors – ${data.failed.length} of ${data.total} file(s) failed.`);
-            setStatus("warning"); // add a "warning" visual state if you like
+            setStatus("warning");
           } else {
             toast.error("Upload failed – please try again.");
             setStatus("error");
@@ -73,7 +103,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         toast.error("Network error while checking progress.");
         setStatus("error");
       }
-    }, 60000);
+    }, 60_000);
   };
 
   const handleUpload = async (files: File[]) => {
@@ -85,9 +115,11 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       clearStorage();
       const fileUrls = await Promise.all(files.map(uploadFileToS3));
 
-      const {
-        data: { task1_idnew },
-      } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, { fileUrls, client_id: currClient, user_id });
+      const { data: { task1_idnew } } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, {
+        fileUrls,
+        client_id: currClient,
+        user_id,
+      });
 
       toast.info("Files uploaded. Analyzing...");
       setProgress({ done: 0, total: fileUrls.length, state: "PENDING", failed: [] });
@@ -102,13 +134,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     }
   };
 
-  const addFiles = (newFiles: FileList) => {
-    setFiles((prev) => [...prev, ...Array.from(newFiles)]);
-  };
-
-  const removeFile = (name: string) => {
-    setFiles((prev) => prev.filter((file) => file.name !== name));
-  };
+  const addFiles = (newFiles: FileList) => setFiles((prev) => [...prev, ...Array.from(newFiles)]);
+  const removeFile = (name: string) => setFiles((prev) => prev.filter((file) => file.name !== name));
 
   return (
     <SidebarProvider>
@@ -119,7 +146,9 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             <span className="text-sm text-muted-foreground">Current client:</span>
-            <Select value={currClient} onValueChange={setCurrClient}>
+
+            {/* Controlled select: whatever is in the store drives the UI */}
+            <Select value={currClient ?? undefined} onValueChange={handleClientChange}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Select a client" />
               </SelectTrigger>
@@ -128,7 +157,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                   <SelectLabel>Clients</SelectLabel>
                   {order.map((id) => (
                     <SelectItem key={id} value={id}>
-                      {clients[id]?.name}
+                      {clients[id]?.name ?? id}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -144,16 +173,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
               </span>
             </div>
           )}
-          {/* {status === "loading" && (
-            <div className="w-40 ml-4">
-              <Progress value={progress.total ? (progress.done / progress.total) * 100 : 0} />
-              <span className="text-xs text-muted-foreground">
-                {progress.done}/{progress.total}
-              </span>
-            </div>
-          )} */}
 
-          {/* Upload Button Dialog */}
+          {/* Upload dialog (unchanged) */}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button
@@ -191,6 +212,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           </Dialog>
         </header>
 
+        {/* Main content (scrollable; uses the light scrollbars you added) */}
         <main className="h-[calc(100vh-64px)] overflow-auto">{children}</main>
       </SidebarInset>
     </SidebarProvider>

@@ -1,0 +1,186 @@
+{
+  "status": "ok",
+  "overview_data": [
+    {
+      "month_date": "Tue, 01 Apr 2025 00:00:00 GMT",
+      "pie_chart_data": {
+        "charts": [
+          {
+            "colors": ["hsl(0, 70%, 60%)", "hsl(120, 70%, 60%)", "hsl(240, 70%, 60%)"],
+            "data": [13251749.4, 10343590.47, 2745982.66],
+            "labels": ["LGT", "Standard Chartered", "UOB"],
+            "title": "AUM_ratio"
+          },
+          {
+            "colors": ["#60a5fa", "#34d399", "#a78bfa", "#fbbf24", "#f472b6", "#38bdf8", "#f87171", "#c084fc"],
+            "data": [2.56, 8.22, 56.29, 3.1, 6.01, 2.47, 10.32, -40.67],
+            "labels": ["Cash and Equivalents", "Direct Fixed Income", "Fixed Income Funds", "Direct Equities", "Equities Fund", "Alternative Fund", "Structured Products", "Loans"],
+            "title": "overall_asset_class_breakdown"
+          },
+          {
+            "colors": ["#60a5fa", "#34d399", "#a78bfa", "#f472b6", "#fbbf24"],
+            "data": [97.53, 0, 0.07, 0.07, 2.33],
+            "labels": ["USD", "CNY", "HKD", "EUR", "Other"],
+            "title": "overall_currency_breakdown"
+          }
+        ]
+      },
+      "table_data": {
+        "tableData": [
+          {
+            "alternative_funds": { "rows": [], "subtotalUsd": 0 },
+            "as_of_date": "2025-04-30",
+            "bank": "LGT",
+            "cash_and_equivalents": {
+              "rows": [
+                { "balanceUsd": 154000, "currency": "USD", "extra": "Interest rate: 3.95%", "name": "Deposit - Money Market Fixed Term USD, 3.95%, 17.04.25-07.05.25", "units": 154000 },
+                { "balanceUsd": 26468.76, "currency": "USD", "name": "6266333.029 USD account", "units": 26468.76 }
+              ],
+              "subtotalUsd": 180468.76
+            },
+            "direct_equities": { "rows": [], "subtotalUsd": 0 },
+            "direct_fixed_income": { "rows": [], "subtotalUsd": 0 },
+            "equity_funds": { "rows": [], "subtotalUsd": 0 },
+            "fixed_income_funds": {
+              "rows": [
+                { "balanceUsd": 8069253.5, "currency": "USD", "extra": "ISIN: LU1008669860, YTM: 8.2%", "name": "AB FCPI FCP - Global High Yield Portfolio Registered-units -AA- Luxembourg NR/NR", "units": 1047955 },
+                { "balanceUsd": 4953027.14, "currency": "USD", "extra": "ISIN: IE00B8K7V925", "name": "PIMCO Funds: Global Investors Series Funds PLC - Income Fund Registered-units -E- / Class USD Ireland NR/NR", "units": 521920.668 }
+              ],
+              "subtotalUsd": 13022280.64
+            },
+            "loans": {
+              "rows": [
+                { "balanceUsd": -5356521.74, "currency": "CHF", "extra": "Interest rate: 1.04%", "name": "Fixed Advance CHF, 1.04%, 11.04.2025 - 09.05.2025", "units": -4404400 },
+                { "balanceUsd": -5356521.74, "currency": "CHF", "extra": "Interest rate: 1.04%", "name": "Fixed Advance CHF, 1.04%, 11.04.2025-09.05.2025", "units": -4404400 }
+              ],
+              "subtotalUsd": -10713043.48
+            },
+            "structured_products": {
+              "rows": [{ "balanceUsd": -528.28, "currency": "USD", "extra": "Call, Strike: 0.895, Expiry: 2025-06-12", "name": "FX OTC Call Option USD/CHF JPTO 15:00 short call 0.89500 12.03.2025", "units": null }],
+              "subtotalUsd": -528.28
+            }
+          },
+          {
+            "alternative_funds": {
+              "rows": [{ "balanceUsd": 650588.87, "currency": "USD", "extra": "ISIN: IEOOB3MD8033", "name": "ANTARCTICA GLOBAL FUND PLC ACCUM SHS AR", "units": 5702.42 }],
+              "subtotalUsd": 650588.87
+            },
+            "as_of_date": "2025-04-30",
+            "bank": "Standard Chartered",
+            "cash_and_equivalents": {
+              "rows": [
+                { "balanceUsd": 17865.35, "currency": "EUR", "extra": null, "name": "DEMAND IB ACCOUNT - 5500516906", "units": null },
+                { "balanceUsd": 19271.12, "currency": "HKD", "extra": null, "name": "DEMAND IB ACCOUNT - 5500517504", "units": null },
+                { "balanceUsd": 7160.09, "currency": "JPY", "extra": null, "name": "DEMAND IB ACCOUNT - 5500516805", "units": null },
+                { "balanceUsd": 423372.67, "currency": "USD", "extra": null, "name": "DEMAND IB ACCOUNT - 5500516704", "units": null }
+              ],
+              "subtotalUsd": 467669.23
+            },
+            "direct_equities": {
+              "rows": [
+                { "balanceUsd": 187342.4, "currency": "USD", "extra": "ISIN: US67066G1040", "name": "NVIDIA CORP SHARES", "units": 1720 },
+                { "balanceUsd": 217615.6, "currency": "USD", "extra": "ISIN: US0231351067", "name": "AMAZON COM INC SHARES", "units": 1180 },
+                { "balanceUsd": 217393, "currency": "USD", "extra": "ISIN: US5949181045", "name": "MICROSOFT CORP SHARES", "units": 550 },
+                { "balanceUsd": 193736, "currency": "USD", "extra": "ISIN: US02079K3059", "name": "ALPHABET INC SHARES INC-A", "units": 1220 },
+                { "balanceUsd": 131980.33, "currency": "JPY", "extra": "ISIN: JP3027650005", "name": "NOMURA NF NIKKEI 225-1321 EXCHANGE TRADED FUNDS", "units": 500 },
+                { "balanceUsd": 454722.8, "currency": "USD", "extra": "ISIN: US78462F1030", "name": "SPDR S&P 500 ETF TRUST EXCAHNGE TRADED FUNDS", "units": 820 },
+                { "balanceUsd": 346142.16, "currency": "USD", "extra": "ISIN: US46090E1038", "name": "INVESCO QQQ TRUST SERIES 1 EXCHANGE TRADED FUNDS", "units": 728 },
+                { "balanceUsd": 211280, "currency": "USD", "extra": "ISIN: US92189F6768", "name": "VANECK SEMICONDUCTOR EXCHANGE TRADED FUNDS", "units": 1000 }
+              ],
+              "subtotalUsd": 1170086.49
+            },
+            "direct_fixed_income": {
+              "rows": [
+                { "balanceUsd": 244682.5, "currency": "USD", "extra": "ISIN: XS2361252971, Yield: 5.89%", "name": "SOFTBANK GRP COR 4.0% 06 JUL 2021 - 06 JUL 2026", "units": 250000 },
+                { "balanceUsd": 244748.4, "currency": "USD", "extra": "ISIN: USQ2704MAL20, Yield: 5.61%", "name": "COM BK AUSTRALIA 5.837% 13 MAR 2024 - 13 MAR 2034", "units": 240000 },
+                { "balanceUsd": 224141.25, "currency": "USD", "extra": "ISIN: US83368TAY47, Yield: 4.97%", "name": "SOCIETE GENERALE 3.653% 08 JUL 2020 - 08 JUL 2035", "units": 250000 },
+                { "balanceUsd": 246476.25, "currency": "USD", "extra": "ISIN: USO9660V2D44, Yield: 6.06%", "name": "BNP PARIBAS 5.906% 19 NOV 2024 - 19 NOV 2035", "units": 250000 },
+                { "balanceUsd": 216185, "currency": "USD", "extra": "ISIN: USQ0426RNF11, Yield: 4.19%", "name": "AUST & NZ BANK 2.57% 25 NOV 2020 - 25 NOV 2035", "units": 250000 },
+                { "balanceUsd": 221312.5, "currency": "USD", "extra": "ISIN: US38141EC311, Yield: 5.8%", "name": "GOLDMAN SACHS GP 4.8% 08 JUL 2014 - 08 JUL 2044", "units": 250000 },
+                { "balanceUsd": 253053.75, "currency": "USD", "extra": "ISIN: US404280DQ93, Yield: 6.48%", "name": "HSBC HOLDINGS 7.336% 03 NOV 2022 - 03 NOV 2026", "units": 250000 },
+                { "balanceUsd": 219042.5, "currency": "USD", "extra": "ISIN: XS2428496710, Yield: 5.58%", "name": "STANDARD CHART 3.603% 12 JAN 2022 - 12 JAN 2033", "units": 250000 },
+                { "balanceUsd": 286533, "currency": "USD", "extra": "ISIN: US961214EF61, Yield: 4.74%", "name": "WESTPAC BANKING 4.11% 24 JUL 2019 - 24 JUL 2034", "units": 300000 },
+                { "balanceUsd": 250628.75, "currency": "USD", "extra": "ISIN: XS1432722823, Yield: 5.86%", "name": "QBE INSURANCE 5.875% 17 JUN 2016 - 17 JUN 2046", "units": 250000 }
+              ],
+              "subtotalUsd": 2164805.65
+            },
+            "equity_funds": {
+              "rows": [
+                { "balanceUsd": 368756.52, "currency": "USD", "extra": "ISIN: LU0122379950", "name": "BGF WRLD HLTHSC A2-ACC-USD", "units": 5467.92 },
+                { "balanceUsd": 313496.8, "currency": "USD", "extra": "ISIN: LU0965508806", "name": "AB LOW VOLATILITY EQUITY AD USD DIST-CASH", "units": 12692.178 },
+                { "balanceUsd": 201892.74, "currency": "USD", "extra": "ISIN: LU0920312682", "name": "GOLDMAN SACHS JAPAN EQ ACC USD-H SN OCCY-ACC-USD-H", "units": 6309.148 }
+              ],
+              "subtotalUsd": 884146.06
+            },
+            "fixed_income_funds": {
+              "rows": [
+                { "balanceUsd": 903645.23, "currency": "USD", "extra": "ISIN: IEOQOB8K7V925", "name": "PIMCO INCOME FUND CLASS-E-USD-CASH", "units": 95120.551 },
+                { "balanceUsd": 169322.59, "currency": "USD", "extra": "ISIN: IEOQOBKO17F69", "name": "ALGEBRIS FINANCIAL CREDIT FUND R-ACC-USD-H", "units": 882.44 },
+                { "balanceUsd": 906288.75, "currency": "USD", "extra": "ISIN: LU0157308031", "name": "ACMBERNSTEIN FCP AMERICAN INCOME PF-AT-USD-CSH", "units": 140509.884 }
+              ],
+              "subtotalUsd": 2583393.63
+            },
+            "loans": { "rows": [], "subtotalUsd": 0 },
+            "structured_products": { "rows": [], "subtotalUsd": 0 }
+          },
+          {
+            "alternative_funds": { "rows": [], "subtotalUsd": 0 },
+            "as_of_date": "2025-04-30",
+            "bank": "UOB",
+            "cash_and_equivalents": {
+              "rows": [{ "balanceUsd": 26086.66, "currency": "USD", "extra": "Cash Settlement Account", "name": "776-999-605-3", "units": null }],
+              "subtotalUsd": 26086.66
+            },
+            "direct_equities": { "rows": [], "subtotalUsd": 0 },
+            "direct_fixed_income": { "rows": [], "subtotalUsd": 0 },
+            "equity_funds": { "rows": [], "subtotalUsd": 0 },
+            "fixed_income_funds": { "rows": [], "subtotalUsd": 0 },
+            "loans": { "rows": [], "subtotalUsd": 0 },
+            "structured_products": {
+              "rows": [
+                { "balanceUsd": 482350, "currency": "USD", "extra": "Security Code: 020925-USD XS2989606210; Type: Equity Linked Investment; Risk: P5 - Very High", "name": "CITI 6M ACN-NVDA+TSM 020925-USD XS2989606210 Equity Linked Investment", "units": 500000 },
+                { "balanceUsd": 1002446, "currency": "USD", "extra": "Security Code: 010725-USD XS1449698718; Type: Equity Linked Investment; Risk: P3 - Medium", "name": "JPM 18M DCN-SPX+NKY 010725-USD XS1449698718 Equity Linked Investment", "units": 1000000 },
+                { "balanceUsd": 487500, "currency": "USD", "extra": "Security Code: 210825-USD XS2884479424; Type: Equity Linked Investment; Risk: P4 - High", "name": "NAT 6M FCN-DIA+QQQ+SPY 210825-USD XS2884479424 Equity Linked Investment", "units": 500000 },
+                { "balanceUsd": 987100, "currency": "USD", "extra": "Security Code: 271225-USD XS1449694485; Type: F.I. Linked Notes; Risk: P3 - Medium", "name": "JPM 24M PRTN-INTEREST RATES 271225-USD XS1449694485 F.I. Linked Notes", "units": 1000000 }
+              ],
+              "subtotalUsd": 2472396
+            }
+          }
+        ]
+      }
+    },
+    {
+      "month_date": "Thu, 01 Dec 2022 00:00:00 GMT",
+      "pie_chart_data": {
+        "charts": [
+          { "colors": ["hsl(0, 70%, 60%)"], "data": [192215601.36], "labels": ["Bank of Singapore"], "title": "AUM_ratio" },
+          { "colors": ["#60a5fa", "#34d399", "#a78bfa", "#fbbf24", "#f472b6", "#38bdf8", "#f87171", "#c084fc"], "data": [100, 0, 0, 0, 0, 0, 0, 0], "labels": ["Cash and Equivalents", "Direct Fixed Income", "Fixed Income Funds", "Direct Equities", "Equities Fund", "Alternative Fund", "Structured Products", "Loans"], "title": "overall_asset_class_breakdown" },
+          { "colors": ["#60a5fa", "#34d399", "#a78bfa", "#f472b6", "#fbbf24"], "data": [2.29, 0, 0, 0, 97.71], "labels": ["USD", "CNY", "HKD", "EUR", "Other"], "title": "overall_currency_breakdown" }
+        ]
+      },
+      "table_data": {
+        "tableData": [
+          {
+            "alternative_funds": { "rows": [], "subtotalUsd": 0 },
+            "as_of_date": "2022-12-27",
+            "bank": "Bank of Singapore",
+            "cash_and_equivalents": {
+              "rows": [
+                { "balanceUsd": 187807525, "currency": "JPY", "name": "Current Account JPY 10-1001-001872464", "units": 25000000000 },
+                { "balanceUsd": 4394500, "currency": "USD", "name": "Current Account USD 10-1001-001872480", "units": 4394500 },
+                { "balanceUsd": 13576.36, "currency": "USD", "extra": "accrued interest", "name": "Current Account USD 10-1001-001872480 (interest)", "units": null }
+              ],
+              "subtotalUsd": 192215601.36
+            },
+            "direct_equities": { "rows": [], "subtotalUsd": 0 },
+            "direct_fixed_income": { "rows": [], "subtotalUsd": 0 },
+            "equity_funds": { "rows": [], "subtotalUsd": 0 },
+            "fixed_income_funds": { "rows": [], "subtotalUsd": 0 },
+            "loans": { "rows": [], "subtotalUsd": 0 },
+            "structured_products": { "rows": [], "subtotalUsd": 0 }
+          }
+        ]
+      }
+    }
+  ]
+}

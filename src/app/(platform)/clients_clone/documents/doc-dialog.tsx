@@ -1,0 +1,377 @@
+import { Fragment, useState, useCallback, useRef } from "react";
+import { Dialog, DialogContent2, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import type { Doc } from "./page";
+import { Button } from "@/components/ui/button";
+import { Download, Eye, Pencil, Loader2 } from "lucide-react";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { toast } from "sonner";
+import { DataTable } from "./data-table";
+import { EditableDataTable } from "./editable-data-table";
+import { useClientStore } from "@/stores/clients-store";
+import type { GridApi } from "ag-grid-community";
+import axios from "axios";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+type TableBlock = { columnOrder: string[]; rows: Record<string, unknown>[] };
+type SubTableGroup = { subTableOrder: string[] } & Record<string, TableBlock>;
+type TableRoot = { tableOrder: string[] } & Record<string, SubTableGroup | TableBlock>;
+
+function applyColumnOrder<T extends Record<string, unknown>>(rows: T[], columnOrder: string[] | undefined): T[] {
+  if (!columnOrder?.length) return rows;
+  return rows.map((row) => {
+    const ordered: Record<string, unknown> = {};
+    columnOrder.forEach((k) => k in row && (ordered[k] = row[k]));
+    Object.keys(row).forEach((k) => !(k in ordered) && (ordered[k] = row[k]));
+    return ordered as T;
+  });
+}
+
+const buildPdfSrc = (url: string) => {
+  const [base, hash] = url.split("#");
+  const flags = "toolbar=0&navpanes=0&scrollbar=0&view=FitH";
+  return `${base}#${hash ? `${hash}&` : ""}${flags}`;
+};
+
+export default function DocDialog({
+  doc,
+  mode,
+  onDocumentUpdate,
+  onRefreshDocuments,
+}: {
+  doc: Doc;
+  mode: "view" | "edit";
+  onDocumentUpdate?: (docId: string, updatedDoc: Partial<Doc>) => void;
+  onRefreshDocuments?: () => void;
+}) {
+  const pristineRef = useRef({
+    assets: structuredClone(doc.assets), // deep‑clone once
+    transactions: structuredClone(doc.transactions),
+  });
+
+  const gridApisRef = useRef<GridApi[]>([]); // will hold every table’s api
+  const registerGridApi = useCallback((api: GridApi) => {
+    // avoid duplicates if the component remounts
+    if (!gridApisRef.current.includes(api)) gridApisRef.current.push(api);
+  }, []);
+
+  const { currClient } = useClientStore();
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editedData, setEditedData] = useState<{
+    assets: any;
+    transactions: any;
+  }>({
+    assets: doc.assets,
+    transactions: doc.transactions,
+  });
+
+  const handleTableDataChange = useCallback(
+    (
+      section: "assets" | "transactions",
+      categoryKey: string,
+      subTableKey: string | null,
+      newRows: Record<string, unknown>[]
+    ) => {
+      setEditedData((prev) => {
+        const newData = { ...prev };
+
+        if (subTableKey) {
+          // Handle subtable case
+          if (!newData[section][categoryKey]) {
+            newData[section][categoryKey] = { subTableOrder: [] };
+          }
+          newData[section][categoryKey][subTableKey] = {
+            ...newData[section][categoryKey][subTableKey],
+            rows: newRows,
+          };
+        } else {
+          // Handle direct table case
+          newData[section][categoryKey] = {
+            ...newData[section][categoryKey],
+            rows: newRows,
+          };
+        }
+
+        return newData;
+      });
+    },
+    []
+  );
+
+  const hasUnsavedChanges = useCallback(() => {
+    if (mode === "view") return false;
+
+    return (
+      JSON.stringify(editedData) !==
+      JSON.stringify({
+        assets: pristineRef.current.assets,
+        transactions: pristineRef.current.transactions,
+      })
+    );
+  }, [editedData, mode]);
+
+  // Handle the actual closing logic
+  const handleClose = useCallback(() => {
+    setOpen(false);
+    setEditedData(structuredClone(pristineRef.current));
+    gridApisRef.current.forEach((api) => api.refreshCells({ force: true, suppressFlash: true }));
+  }, []);
+
+  // Handle dialog close attempt
+  const handleOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (isOpen) {
+        setOpen(true);
+      } else {
+        // If closing and has unsaved changes, show confirmation
+        if (hasUnsavedChanges()) {
+          setShowConfirmDialog(true);
+        } else {
+          handleClose();
+        }
+      }
+    },
+    [hasUnsavedChanges, handleClose]
+  );
+
+  const saveChanges = async () => {
+    if (!currClient) {
+      toast.error("No client selected.");
+      return;
+    }
+
+    setIsSaving(true);
+    const toastId = toast("Saving changes…", {
+      duration: Infinity,
+      icon: <Loader2 className="animate-spin" />,
+    });
+
+    try {
+      const { data } = await axios.patch<{
+        task_id: string;
+      }>(`${process.env.NEXT_PUBLIC_API_URL}/update_document`, {
+        client_id: currClient,
+        doc_id: doc.id,
+        data: {
+          assets: editedData.assets,
+          transactions: editedData.transactions,
+        },
+      });
+
+      const taskId = data.task_id;
+
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/update_document/${taskId}`, {
+            validateStatus: () => true,
+          });
+
+          if (res.status !== 202) {
+            clearInterval(pollInterval);
+            toast.dismiss(toastId);
+            setIsSaving(false);
+
+            if (res.status === 200) {
+              toast.success("Document updated successfully.");
+
+              // Update the document data
+              if (onDocumentUpdate) {
+                onDocumentUpdate(doc.id, {
+                  assets: editedData.assets,
+                  transactions: editedData.transactions,
+                });
+              }
+
+              // Optionally refresh all documents
+              if (onRefreshDocuments) {
+                onRefreshDocuments();
+              }
+            } else {
+              const errMsg = res.data?.error || res.statusText || "Server error";
+              toast.error(`Update failed: ${errMsg}`);
+            }
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+      }, 2000);
+    } catch (err: any) {
+      toast.dismiss(toastId);
+      setIsSaving(false);
+      toast.error(err?.response?.data?.message || err?.message || "Update failed.");
+    }
+  };
+
+  function renderTableRoot(root: TableRoot | undefined, sectionTitle: string, section: "assets" | "transactions") {
+    if (!root?.tableOrder?.length) return null;
+
+    const currentData = mode === "edit" ? editedData[section] : root;
+
+    return (
+      <>
+        {root.tableOrder.length > 0 && <h3 className="text-xl font-semibold text-center">{sectionTitle}</h3>}
+
+        {root.tableOrder.map((catKey) => {
+          const cat = currentData[catKey] as SubTableGroup | TableBlock | undefined;
+          if (!cat) return null;
+
+          /* Category contains subtables */
+          if ("subTableOrder" in cat && Array.isArray(cat.subTableOrder)) {
+            return (
+              <Fragment key={catKey}>
+                <h4 className="font-semibold text-center mt-4">{catKey.replace(/_/g, " ")}</h4>
+                {cat.subTableOrder.map((subKey) => {
+                  const tbl = cat[subKey] as TableBlock | undefined;
+                  if (!tbl?.rows?.length) return null;
+                  const rows = applyColumnOrder(tbl.rows, tbl.columnOrder);
+
+                  if (mode === "edit") {
+                    return (
+                      <EditableDataTable
+                        key={`${catKey}-${subKey}`}
+                        title={subKey.replace(/_/g, " ")}
+                        rows={rows}
+                        onDataChange={(newRows) => handleTableDataChange(section, catKey, subKey, newRows)}
+                        onApiReady={registerGridApi}
+                      />
+                    );
+                  } else {
+                    return <DataTable key={`${catKey}-${subKey}`} title={subKey.replace(/_/g, " ")} rows={rows} />;
+                  }
+                })}
+              </Fragment>
+            );
+          }
+
+          /* Category itself is a single table */
+          if ((cat as TableBlock).rows?.length) {
+            const tbl = cat as TableBlock;
+            const rows = applyColumnOrder(tbl.rows, tbl.columnOrder);
+
+            if (mode === "edit") {
+              return (
+                <EditableDataTable
+                  key={catKey}
+                  title={catKey.replace(/_/g, " ")}
+                  rows={rows}
+                  onDataChange={(newRows) => handleTableDataChange(section, catKey, null, newRows)}
+                  onApiReady={registerGridApi}
+                />
+              );
+            } else {
+              return <DataTable key={catKey} title={catKey.replace(/_/g, " ")} rows={rows} />;
+            }
+          }
+          return null;
+        })}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Dialog
+        // open={open}
+        // onOpenChange={(isOpen) => {
+        //   setOpen(isOpen); // keep the UI in sync
+        //   if (!isOpen) {
+        //     console.log("closed dialog");
+        //     setEditedData(structuredClone(pristineRef.current));
+
+        //     gridApisRef.current.forEach((api) => api.refreshCells({ force: true, suppressFlash: true }));
+        //   }
+        // }}
+        open={open}
+        onOpenChange={handleOpenChange}
+      >
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon">
+            {mode === "view" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+          </Button>
+        </DialogTrigger>
+
+        <DialogContent2>
+          <DialogTitle className="hidden"></DialogTitle>
+          <DialogDescription className="hidden"></DialogDescription>
+          {mode === "view" ? (
+            <Button
+              size="lg"
+              className="gap-2 mb-4 w-1/3 mx-auto my-4"
+              onClick={() => doc.excel_url && window.open(doc.excel_url)}
+              disabled={!doc.excel_url}
+            >
+              <Download className="h-4 w-4" />
+              Download Excel
+            </Button>
+          ) : (
+            <Button size="lg" className="gap-2 mb-4 w-1/3 mx-auto my-4" onClick={saveChanges} disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 rotate-90" />}
+              {isSaving ? "Saving..." : "Save changes"}
+            </Button>
+          )}
+
+          <ResizablePanelGroup direction="horizontal" className="w-full h-[80vh]">
+            {/* PDF */}
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="flex flex-col overflow-y-auto pr-2 h-full">
+                <span className="mb-2 text-xl font-semibold truncate text-center">{doc.bankname}</span>
+                {doc.pdf_url ? (
+                  <iframe
+                    src={buildPdfSrc(doc.pdf_url)}
+                    className="flex-1 w-full border-0 bg-white h-full"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="flex items-center justify-center flex-1 text-gray-500">No PDF available</div>
+                )}
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* Tables */}
+            <ResizablePanel defaultSize={50} minSize={30}>
+              <div className="flex flex-col overflow-y-auto pl-2 h-full space-y-6">
+                {renderTableRoot(doc.assets, "Assets", "assets")}
+                {renderTableRoot(doc.transactions, "Transactions", "transactions")}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </DialogContent2>
+      </Dialog>
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes that will be lost if you close this dialog. Are you sure you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowConfirmDialog(false);
+                handleClose();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
