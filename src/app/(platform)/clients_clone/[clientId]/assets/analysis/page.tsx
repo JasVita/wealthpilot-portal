@@ -327,7 +327,7 @@ export default function AnalysisPage() {
       </Card>
 
       {/* TOP 10 */}
-      <Card className={MOCK_UI(USE_MOCKS)}>
+      {/* <Card className={MOCK_UI(USE_MOCKS)}>
         <CardHeader>
           <CardTitle>TOP 10</CardTitle>
           <CardDescription>Largest positions by portfolio weight</CardDescription>
@@ -349,7 +349,7 @@ export default function AnalysisPage() {
             options={barOptions as any}
           />
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Bottom 3 cards: Currency (real), Geo (mock), Industry (mock) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -420,8 +420,8 @@ export default function AnalysisPage() {
           </CardContent>
         </Card>
 
-        {renderAllocationTable("Geographic Allocation", geoAllocation)}
-        {renderAllocationTable("Industry Allocation", industryAllocation)}
+        {/* {renderAllocationTable("Geographic Allocation", geoAllocation)}
+        {renderAllocationTable("Industry Allocation", industryAllocation)} */}
       </div>
     </div>
   );

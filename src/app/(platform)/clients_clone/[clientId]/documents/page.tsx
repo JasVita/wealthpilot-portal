@@ -40,6 +40,7 @@ export interface Doc {
   exp?: string | null;
   assets?: any;
   transactions?: any;
+  createdAt?: string | null;   // ✅ add this line
 }
 
 /* -------------------- icons -------------------- */
@@ -235,26 +236,28 @@ export default function DocumentsPage() {
             </div>
           </div>
 
+          {/* Folders: hide those with 0 (except "All") */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {FOLDERS.map(({ key, label, icon: Icon }) => {
-              const disabled = key !== "all" && counts[key] === 0;
-              const active = folder === key;
-              return (
-                <Button
-                  key={key}
-                  variant={active ? "default" : "outline"}
-                  size="sm"
-                  className={clsx("whitespace-nowrap", disabled && "opacity-50 pointer-events-none")}
-                  onClick={() => setFolder(key)}
-                >
-                  <Icon className="h-4 w-4 mr-1.5" />
-                  {label}
-                  <span className={clsx("ml-2 rounded px-1.5 text-xs", active ? "bg-black/10" : "bg-muted")}>
-                    {counts[key]}
-                  </span>
-                </Button>
-              );
-            })}
+            {FOLDERS
+              .filter(({ key }) => key === "all" || (counts[key] ?? 0) > 0)
+              .map(({ key, label, icon: Icon }) => {
+                const active = folder === key;
+                return (
+                  <Button
+                    key={key}
+                    variant={active ? "default" : "outline"}
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={() => setFolder(key)}
+                  >
+                    <Icon className="h-4 w-4 mr-1.5" />
+                    {label}
+                    <span className={clsx("ml-2 rounded px-1.5 text-xs", active ? "bg-black/10" : "bg-muted")}>
+                      {counts[key]}
+                    </span>
+                  </Button>
+                );
+              })}
           </div>
         </CardHeader>
 
@@ -268,8 +271,6 @@ export default function DocumentsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>As Of Date</TableHead>
                   <TableHead>Upload Date</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Upload User</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -277,26 +278,21 @@ export default function DocumentsPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={6} className="text-center py-8">
                       Loading documents...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? (
                   filtered.map((d, i) => {
-                    const d2 = daysTo(d.exp ?? "—");
-                    const expBadge =
-                      !d.exp || d.exp === "—" ? null : d2 <= 0 ? (
-                        <span className="ml-2 text-xs text-red-600">Expired</span>
-                      ) : d2 <= 30 ? (
-                        <span className="ml-2 text-xs text-amber-600">Expiring in {d2}d</span>
-                      ) : null;
-
                     const safeFilename =
                       fileNameFromUrl(d.pdf_url) ||
                       fileNameFromUrl(d.excel_url) ||
                       (typeof d.name === "string" ? d.name : "");
 
                     const label = displayName(d);
+
+                    const asOf = d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—";
+                    const uploaded = d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "—";
 
                     return (
                       <TableRow key={(d.id ?? i).toString()}>
@@ -321,30 +317,15 @@ export default function DocumentsPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {d.exp ?? "—"}
-                          {expBadge}
-                        </TableCell>
-                        <TableCell>{"—"}</TableCell>
-                        <TableCell>{"—"}</TableCell>
-
-                        {/* ⬇️ Make Actions behave like the old grid: DocDialog + DeleteButton */}
+                        <TableCell>{asOf}</TableCell>
+                        <TableCell>{uploaded}</TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {/* View / Edit handled internally by DocDialog (same as before) */}
-                            {/* <DocDialog doc={d as Doc} mode="view" /> */}
-
-                            {/* Download keeps your existing logic */}
                             <Button size="icon" variant="ghost" aria-label="Download" asChild>
                               <a href={d.pdf_url ?? d.excel_url ?? "#"} target="_blank" rel="noopener noreferrer">
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-
-                            {/* Delete uses the same DeleteButton as old code */}
                             <DeleteButton doc={d as Doc} docs={docs} setDocs={setDocs} />
                           </div>
                         </TableCell>
@@ -353,12 +334,13 @@ export default function DocumentsPage() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       No documents found in this folder.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
+
             </Table>
           </div>
         </CardContent>
