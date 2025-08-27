@@ -185,7 +185,7 @@ export default function CashPage() {
             label: (i: any) => {
               const val = Number(i.parsed.y);
               const name = i.dataset?.label ? `${i.dataset.label}: ` : "";
-              return `${name}${fmtCurrency(val, 0)}`;
+              return `${name}${fmtCurrency(val, 2)}`;
             },
           },
         },

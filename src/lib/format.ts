@@ -18,9 +18,13 @@ export const fmtCurrency = (v: unknown, digits = 0) =>
 /** USD with 2 decimals (shorthand) */
 export const fmtCurrency2 = (v: unknown) => fmtCurrency(v, 2);
 
-/** Optional helpers if you ever need them elsewhere */
+/** Optional helpers */
 export const fmtCurrency0 = (v: unknown) => fmtCurrency(v, 0);
 export const fmtCurrencyAbs = (v: unknown, digits = 0) =>
   fmtCurrency(Math.abs(toNum(v)), digits);
 
-
+/** Percentage helper — returns a raw number (not a string). */
+export const pct = (part: unknown, total: unknown) => {
+  const p = toNum(total) === 0 ? 0 : (toNum(part) / toNum(total)) * 100;
+  return Number.isFinite(p) ? p : 0;
+};

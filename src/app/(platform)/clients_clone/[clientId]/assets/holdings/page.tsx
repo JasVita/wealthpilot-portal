@@ -372,10 +372,6 @@ export default function HoldingsPage() {
 
   const hasHoldings = visibleAssetKeys.length > 0;
 
-  // If no holdings, show a clean message (no sticky bar)
-  // if (status === "ready" && !hasHoldings) {
-  //   return <div className="p-6 text-muted-foreground">No holdings for this client.</div>;
-  // }
   useEffect(() => {
     if (status !== "ready" || !selMonth) return;
     setEmptyMonths((prev) => {
@@ -384,34 +380,6 @@ export default function HoldingsPage() {
       return next;
     });
   }, [status, selMonth, hasHoldings]);
-
-  {status === "ready" && selMonth && !hasHoldings && (
-    <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-3">
-      No holdings for <span className="font-medium">{selMonth}</span>.
-      {months.length > 0 && (
-        <button
-          type="button"
-          className="underline underline-offset-2 hover:text-foreground"
-          onClick={() => setSelMonth(months[0])} // jump to latest (first = newest)
-        >
-          Jump to latest
-        </button>
-      )}
-      {(() => {
-        const idx = months.indexOf(selMonth);
-        return idx >= 0 && idx < months.length - 1 ? (
-          <button
-            type="button"
-            className="underline underline-offset-2 hover:text-foreground"
-            onClick={() => setSelMonth(months[idx + 1])} // previous (older) month
-          >
-            Previous month
-          </button>
-        ) : null;
-      })()}
-    </div>
-  )}
-
 
   // ------------------------------- UI -------------------------------
 
@@ -452,7 +420,34 @@ export default function HoldingsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
+        {status === "ready" && selMonth && !hasHoldings && (
+        <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-3">
+          No holdings for <span className="font-medium">{selMonth}</span>.
+          {months.length > 0 && (
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={() => setSelMonth(months[0])}
+            >
+              Jump to latest
+            </button>
+          )}
+          {(() => {
+            const idx = months.indexOf(selMonth);
+            return idx >= 0 && idx < months.length - 1 ? (
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => setSelMonth(months[idx + 1])}
+              >
+                Previous month
+              </button>
+            ) : null;
+          })()}
+        </div>
+      )}
+      
       {/* Pies */}
       {SHOW_PIES && pieCards.map((meta, idx) => {
         const ds = pieDataSets[idx];

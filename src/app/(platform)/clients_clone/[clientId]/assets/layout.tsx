@@ -44,12 +44,10 @@ ChartJS.register(
   Filler,
   Legend,
   ArcElement,
-  ChartDataLabels 
+  ChartDataLabels
 );
 
-// try { ChartJS.unregister(ChartDataLabels); } catch { /* no-op */ }
-
-export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => { });
+export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
 
 const TABS = [
   { slug: "holdings", label: "Holdings" },
@@ -74,8 +72,6 @@ type Cards = {
 };
 
 type DLPie = NonNullable<PluginOptionsByType<"pie">["datalabels"]>;
-type DLDoughnut = NonNullable<PluginOptionsByType<"doughnut">["datalabels"]>;
-type DLBar = NonNullable<PluginOptionsByType<"bar">["datalabels"]>;
 
 const assetKeys = [
   "cash_and_equivalents",
@@ -110,32 +106,19 @@ const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
   loans: ["loans"],
 };
 
-// const fmtCurrency = (v: number, digits = 0) =>
-//   new Intl.NumberFormat("en-US", {
-//     style: "currency",
-//     currency: "USD",
-//     minimumFractionDigits: digits,
-//     maximumFractionDigits: digits,
-//   }).format(v);
-
 const parseDate = (s: string) => new Date(s);
 
-// function Kpi({ title, value, caption }: { title: string; value: string; caption?: string }) {
-//   return (
-//     <Card>
-//       <CardHeader className="pb-2">
-//         <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
-//         {caption ? <CardDescription>{caption}</CardDescription> : null}
-//       </CardHeader>
-//       <CardContent>
-//         <div className="text-2xl md:text-3xl font-semibold tracking-tight">{value}</div>
-//       </CardContent>
-//     </Card>
-//   );
-// }
-
-function Kpi({ title, value, caption, valueClassName }:
-  { title: string; value: string; caption?: string; valueClassName?: string; }) {
+function Kpi({
+  title,
+  value,
+  caption,
+  valueClassName,
+}: {
+  title: string;
+  value: string;
+  caption?: string;
+  valueClassName?: string;
+}) {
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -143,32 +126,17 @@ function Kpi({ title, value, caption, valueClassName }:
         {caption ? <CardDescription>{caption}</CardDescription> : null}
       </CardHeader>
       <CardContent>
-        <div
-          className={clsx(
-            "text-2xl md:text-3xl font-semibold tracking-tight",
-            valueClassName
-          )}
-        >
-          {value}
-        </div>
+        <div className={clsx("text-2xl md:text-3xl font-semibold tracking-tight", valueClassName)}>{value}</div>
       </CardContent>
     </Card>
   );
 }
-
 
 export default function AssetsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, currClient } = useClientStore();
-
-  const [exporter, setExporter] = useState<(() => void) | undefined>(undefined);
-
-  // ✅ wrapper so we set a function value (not an updater)
-  // const registerExporter = useCallback((fn?: () => void) => {
-  //   setExporter(() => fn); // store the function without invoking it
-  // }, []);
 
   useEffect(() => {
     if (clientId) setCurrClient(clientId);
@@ -182,50 +150,21 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const [trendApi, setTrendApi] = useState<{ label: string; net_assets: number }[] | null>(null);
   const [breakdownApi, setBreakdownApi] = useState<Record<string, number> | null>(null);
 
-  // useEffect(() => {
-  //   if (!currClient) return;
-  //   (async () => {
-  //     setStatus("loading");
-  //     try {
-  //       const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-  //       const resp = await axios.post(route, { client_id: currClient });
-  //       const payload = resp.data;
-  //       console.log("payload is: ", payload);
-  //       logRoute("/overviews", payload);
-  //       const rows: OverviewRow[] = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-  //       if (!rows.length) throw new Error("No overview data");
-  //       setOverviews(rows);
-  //       setStatus("ready");
-  //       console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
-  //     } catch (err: any) {
-  //       setErrorMsg(err?.message || "Unknown error");
-  //       setOverviews([]);
-  //       setStatus("ready"); // still render; cards will show "—"/empty
-  //     }
-  //   })();
-  // }, [currClient]);
   useEffect(() => {
     if (!currClient) return;
     (async () => {
       setStatus("loading");
       try {
-        // ✅ use the new Next route; no env var, no CORS
         const { data } = await axios.get("/api/clients/assets/overview", {
           params: { client_id: currClient },
         });
-        console.log("overview api", data);
-
-        const rows: OverviewRow[] =
-          Array.isArray(data?.overview_data) ? data.overview_data : [];
-
+        const rows: OverviewRow[] = Array.isArray(data?.overview_data) ? data.overview_data : [];
         setOverviews(rows);
         setCards(data?.computed?.cards ?? null);
         setTrendApi(Array.isArray(data?.computed?.trend) ? data.computed.trend : null);
         setBreakdownApi(data?.computed?.breakdown ?? null);
-
         if (!rows.length) throw new Error("No overview data");
         setStatus("ready");
-        console.log(...pill("network", "#475569"), "overview api");
       } catch (err: any) {
         setErrorMsg(err?.message || "Unknown error");
         setOverviews([]);
@@ -261,10 +200,9 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     }));
   }, [current]);
 
-  // ---- Hidden charts to capture images for the PDF (layout-level, so tabs don't matter) ----
+  // ---- Hidden charts for PDF ----
   const chartRefs = useRef<Record<number, any>>({});
 
-  // ---- Table assembler reused for PDF ----
   const tableForPdf = useCallback(
     (key: (typeof assetKeys)[number]) => {
       const columns = ["Bank", "Name", "Currency", "Units", "Balance (USD)"];
@@ -280,7 +218,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     [aggregatedTables]
   );
 
-  // ---- PDF: one consistent export for ALL tabs ----
   const handleExportPdf = useCallback(async () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -294,51 +231,25 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       : "—";
     doc.setFontSize(12).text(`Reporting Month: ${monthLabel}`, pageWidth / 2, y, { align: "center" });
 
-    // Charts page(s): use images from hidden Pie charts
     if (pieDataSets.length >= 1) {
-      await new Promise((r) => requestAnimationFrame(r)); // let canvases paint
-
+      await new Promise((r) => requestAnimationFrame(r));
       const margin = 45;
       const availW = pageWidth - margin * 2;
-      // pick a square size that fits your layout
-      const side = Math.min(availW, 240); // e.g., 240pt square (~3.33in)
-
+      const side = Math.min(availW, 240);
       for (let idx = 0; idx < Math.min(3, pieDataSets.length); idx++) {
         const chart = chartRefs.current[idx];
         const img = chart?.toBase64Image?.();
         if (!img) continue;
-
-        const x = margin + (availW - side) / 2; // center horizontally
+        const x = margin + (availW - side) / 2;
         doc.addImage(img, "PNG", x, y, side, side, undefined, "FAST");
         y += side + 20;
-
         if (idx === 1) {
           doc.addPage();
           y = 40;
         }
       }
-
-      // doc.addPage();
-      // y = 40;
-      // doc.setFontSize(14).text("Overview Charts", 32, y);
-      // y += 16;
-
-      // for (let idx = 0; idx < Math.min(3, pieDataSets.length); idx++) {
-      //   const chart = chartRefs.current[idx];
-      //   const img = chart?.toBase64Image?.();
-      //   if (img) {
-      //     doc.addImage(img, "PNG", 45, y, pageWidth - 90, 180, undefined, "FAST");
-      //     y += 200;
-      //     if (idx === 1) {
-      //       // optional page break after second chart
-      //       doc.addPage();
-      //       y = 40;
-      //     }
-      //   }
-      // }
     }
 
-    // Holdings-like tables for all asset buckets
     for (const key of assetKeys) {
       const { columns, body, title } = tableForPdf(key);
       if (!body.length) continue;
@@ -375,6 +286,16 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     return { assets, liabilities: liabilitiesAbs, netAssets: net, aumFromPie };
   }, [aggregatedTables, current]);
 
+  // KPI format: exact 2 decimals
+  const kpiValues = useMemo(() => {
+    return {
+      totalAssets: fmtCurrency2(cards ? cards.total_assets : kpis.assets),
+      totalLiabilities: fmtCurrency2(Math.abs(cards ? cards.total_liabilities : kpis.liabilities)),
+      netAssets: fmtCurrency2(cards ? cards.net_assets : kpis.netAssets),
+      aumFromBanks: fmtCurrency2(cards ? cards.aum_from_banks : (kpis.aumFromPie ?? 0)),
+    };
+  }, [cards, kpis]);
+
   const bucketChips = useMemo(() => {
     return assetKeys.map((k) => {
       const rows = aggregatedTables[k] || [];
@@ -383,92 +304,52 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     });
   }, [aggregatedTables]);
 
-  // const trend = useMemo(() => {
-  //   if (!overviews.length) return null;
-  //   const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
-  //   const labels = sorted.map((o) =>
-  //     new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
-  //   );
-  //   const data = sorted.map(
-  //     (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
-  //   );
-  //   return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
-  // }, [overviews]);
-
   const trend = useMemo(() => {
     if (trendApi && trendApi.length) {
       const labels = trendApi.map((t) => t.label);
       const data = trendApi.map((t) => t.net_assets);
-      return {
-        labels,
-        datasets: [
-          { label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 },
-        ],
-      };
+      return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
     }
-
-    // fallback to legacy overviews if computed.trend isn’t there
     if (!overviews.length) return null;
-    const sorted = [...overviews].sort(
-      (a, b) => +parseDate(a.month_date) - +parseDate(b.month_date)
-    );
+    const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
     const labels = sorted.map((o) =>
-      new Date(o.month_date).toLocaleDateString("en-US", {
-        year: "2-digit",
-        month: "short",
-      })
+      new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
     );
     const data = sorted.map(
-      (o) =>
-        (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce(
-          (a: number, b: number) => a + b,
-          0
-        ) || 0
+      (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
     );
-    return {
-      labels,
-      datasets: [
-        { label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 },
-      ],
-    };
+    return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
   }, [trendApi, overviews]);
 
+  // Build Breakdown chips from API or fallback, then sort DESC by absolute value
   const breakdownChips = useMemo(() => {
+    let items:
+      | { key: string; label: string; count?: number; total: number }[]
+      | undefined;
+
     if (breakdownApi) {
-      // turn the { "Direct Equities": 1234.56, ... } map into a chip array
-      return Object.entries(breakdownApi).map(([label, total]) => ({
+      items = Object.entries(breakdownApi).map(([label, total]) => ({
         key: label,
         label,
-        // count is unknown from the computed API; omit it
-        count: undefined as number | undefined,
-        total,
+        total: Number(total) || 0,
       }));
+    } else {
+      items = assetKeys.map((k) => {
+        const rows = aggregatedTables[k] || [];
+        const total = rows.reduce((a, r) => a + (Number((r as any)?.balanceUsd ?? 0) || 0), 0);
+        return { key: k, label: assetLabels[k], total };
+      });
     }
 
-    // fallback: compute from aggregatedTables (legacy)
-    return assetKeys.map((k) => {
-      const rows = aggregatedTables[k] || [];
-      const total = rows.reduce(
-        (a, r) => a + (Number((r as any)?.balanceUsd ?? 0) || 0),
-        0
-      );
-      return { key: k, label: assetLabels[k], count: rows.length, total };
-    });
+    if (!items) return [];
+    // sort by absolute value (DESC) so zeros sink to the end
+    return items.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }, [breakdownApi, aggregatedTables]);
-
-
-  // const lineOptions = {
-  //   responsive: true,
-  //   maintainAspectRatio: false,
-  //   plugins: { legend: { display: false } },
-  //   scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v: any) => fmtCurrency(Number(v)) } } },
-  // };
 
   const lineOptions = useMemo(() => {
     const values = (trend?.datasets?.[0]?.data as number[]) ?? [];
     const minV = values.length ? Math.min(...values) : 0;
     const maxV = values.length ? Math.max(...values) : 0;
-    // ~8% vertical padding (fallback to a small pad if flat series)
     const pad = (maxV - minV) * 0.08 || (maxV || 1) * 0.08;
 
     return {
@@ -477,21 +358,20 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       layout: { padding: { left: 8, right: 8, top: 8, bottom: 8 } },
       plugins: {
         legend: { display: true },
-        // make sure no point value is drawn on the line
         datalabels: {
-        display: true,
-        formatter: (v: number) => fmtCurrency2(Number(v)),
-        anchor: 'center',   // attach to the point
-        align:  'right',     // <-- move label to the LEFT of the point
-        offset: 10,         // distance from the point (tune to taste)
-        color: '#111827',
-        backgroundColor: 'rgba(255,255,255,0.92)',
-        borderColor: '#bedcb5ff',
-        borderWidth: 1,
-        borderRadius: 4,
-        padding: { left: 6, right: 6, top: 2, bottom: 2 },
-        clip: false,
-      } as any,
+          display: true,
+          formatter: (v: number) => fmtCurrency2(Number(v)),
+          anchor: "center",
+          align: "right",
+          offset: 10,
+          color: "#111827",
+          backgroundColor: "rgba(255,255,255,0.92)",
+          borderColor: "#bedcb5ff",
+          borderWidth: 1,
+          borderRadius: 4,
+          padding: { left: 6, right: 6, top: 2, bottom: 2 },
+          clip: false,
+        } as any,
         padding: { left: 6, right: 6, top: 2, bottom: 2 },
       },
       elements: {
@@ -505,7 +385,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           suggestedMin: minV - pad,
           suggestedMax: maxV + pad,
           ticks: {
-            padding: 10, // a bit more breathing room
+            padding: 10,
             callback: (v: any) => fmtCurrency2(Number(v)),
           },
         },
@@ -515,23 +395,15 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
 
   const base = `/clients_clone/${clientId ?? ""}/assets`;
 
-  // at the bottom of assets/layout.tsx (where pieOptions is declared)
   const pieOptions = {
     responsive: true,
     maintainAspectRatio: true,
     plugins: {
       legend: {
         position: "top" as const,
-        labels: {
-          usePointStyle: true,
-          padding: 8,
-          boxWidth: 10,
-          boxHeight: 10,
-        },
+        labels: { usePointStyle: true, padding: 8, boxWidth: 10, boxHeight: 10 },
       },
-      // keep datalabels logic, but make sure it's an object (not boolean)
       datalabels: {
-        // show labels only when we actually have values
         display: (ctx: any) => {
           const ds = (ctx?.chart?.data?.datasets?.[0]?.data as number[]) || [];
           const total = ds.reduce((a, b) => a + (Number(b) || 0), 0);
@@ -546,15 +418,13 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           const pct = Math.round((Number(value) / total) * 100);
           return pct >= 5 ? `${pct}%` : "";
         },
-      } as Partial<DLPie>, // ✅ keep the type-safe cast you introduced
+      } as Partial<DLPie>,
     },
-    // If you need extra spacing around the chart, use layout padding (optional):
-    // layout: { padding: { top: 0, right: 0, bottom: 0, left: 0 } },
   };
 
   const hasCharts = pieDataSets.length === 3;
+
   return (
-    // <AssetsExportContext.Provider value={registerExporter}>
     <div className="flex flex-col overflow-auto h-[calc(100vh-64px)] gap-4 p-4" data-scroll-root="assets">
       {hasCharts ? (
         <div aria-hidden className="fixed opacity-0 pointer-events-none -z-50" style={{ left: -100000, top: -100000 }}>
@@ -579,19 +449,10 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                     plugins: {
                       legend: {
                         position: "top",
-                        labels: {
-                          usePointStyle: true,
-                          padding: 8,
-                          boxWidth: 10,   // ✅ allowed
-                          boxHeight: 10,  // ✅ allowed
-                        },
+                        labels: { usePointStyle: true, padding: 8, boxWidth: 10, boxHeight: 10 },
                       },
                       title: { display: true, text: label },
-                      // keep datalabels off on these hidden pies to avoid "_listened" crashes
-                      // datalabels: { display: () => false } as Partial<
-                      //   NonNullable<PluginOptionsByType<"pie">["datalabels"]>
-                      // >,
-                      datalabels: false as unknown as Partial<NonNullable<PluginOptionsByType<"pie">["datalabels"]>>,
+                      datalabels: false as any,
                     },
                   }}
                   plugins={[]}
@@ -601,12 +462,9 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           ))}
         </div>
       ) : (
-        <div className="text-muted-foreground text-center text-sm mt-10">
-          No data available. Please upload documents.
-        </div>
+        <div className="text-muted-foreground text-center text-sm mt-10">No data available. Please upload documents.</div>
       )}
 
-      {/* ---- Overview (always visible on top of every assets sub-tab) ---- */}
       <div className="mt-2">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-2xl font-bold">Overview</div>
@@ -636,39 +494,17 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
 
         {status === "ready" && (
           <>
-            {/* KPI cards */}
-            {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <Kpi title="Total Assets" value={fmtCurrency(kpis.assets)} caption="Gross long positions" />
-              <Kpi title="Total Liabilities" value={fmtCurrency(kpis.liabilities)} caption="Loans & short values" />
-              <Kpi title="Net Assets" value={fmtCurrency(kpis.netAssets)} caption="Assets − Liabilities" />
-              <Kpi
-                title="AUM (from banks)"
-                value={kpis.aumFromPie ? fmtCurrency(kpis.aumFromPie) : "—"}
-                caption="Sum of bank exposure"
-              />
-            </div> */}
+            {/* KPIs with exact 2 decimals */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <Kpi
-                title="Total Assets"
-                value={fmtCurrency(cards ? cards.total_assets : kpis.assets)}
-                caption="Gross long positions"
-              />
+              <Kpi title="Total Assets" value={kpiValues.totalAssets} caption="Gross long positions" />
               <Kpi
                 title="Total Liabilities"
-                value={fmtCurrency(Math.abs(cards ? cards.total_liabilities : kpis.liabilities))}
+                value={kpiValues.totalLiabilities}
                 caption="Loans & short values"
                 valueClassName="text-red-600"
               />
-              <Kpi
-                title="Net Assets"
-                value={fmtCurrency(cards ? cards.net_assets : kpis.netAssets)}
-                caption="Assets − Liabilities"
-              />
-              <Kpi
-                title="AUM (from banks)"
-                value={fmtCurrency(cards ? cards.aum_from_banks : (kpis.aumFromPie ?? 0))}
-                caption="Sum of bank exposure"
-              />
+              <Kpi title="Net Assets" value={kpiValues.netAssets} caption="Assets − Liabilities" />
+              <Kpi title="AUM (from banks)" value={kpiValues.aumFromBanks} caption="Sum of bank exposure" />
             </div>
 
             {/* Trend + quick breakdown chips */}
@@ -679,95 +515,41 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                   <CardDescription>Net assets over reporting periods</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[260px]">
-                  {trend ? (
-                    <Line data={trend} options={lineOptions} />
-                  ) : (
-                    <div className="text-sm text-muted-foreground">No history</div>
-                  )}
+                  {trend ? <Line data={trend} options={lineOptions} /> : <div className="text-sm text-muted-foreground">No history</div>}
                 </CardContent>
               </Card>
 
-              {/* <Card className={MOCK_UI(USE_MOCKS)}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
-                  <CardDescription>By asset bucket</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {bucketChips.map((b) => (
-                    <span
-                      key={b.key}
-                      className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs bg-muted/40"
-                      title={`${b.label} • ${b.count} positions`}
-                    >
-                      <span className="font-medium">{b.label}</span>
-                      <span className="text-muted-foreground">({b.count})</span>
-                      <span className="ml-1 font-semibold">{fmtCurrency(b.total)}</span>
-                    </span>
-                  ))}
-                </CardContent>
-              </Card> */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
                   <CardDescription>By asset bucket</CardDescription>
                 </CardHeader>
-
                 <CardContent className="flex flex-wrap gap-2">
                   {breakdownChips.map((b) => {
                     const isLoan = b.label === "Loans";
-                    const showTotal =
-                      isLoan ? Math.abs(Number(b.total || 0)) : Number(b.total || 0);
-
+                    const showTotal = isLoan ? Math.abs(Number(b.total || 0)) : Number(b.total || 0);
                     return (
                       <span
                         key={b.key}
                         className={clsx(
                           "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs",
-                          isLoan
-                            ? "bg-rose-50 border-rose-200" // 🌸 pink chip for Loans
-                            : "bg-muted/40"
+                          isLoan ? "bg-rose-50 border-rose-200" : "bg-muted/40"
                         )}
-                        title={
-                          typeof b.count === "number"
-                            ? `${b.label} • ${b.count} positions`
-                            : b.label
-                        }
+                        title={b.label}
                       >
-                        <span className={clsx("font-medium", isLoan && "text-rose-700")}>
-                          {b.label}
-                        </span>
-
-                        {typeof b.count === "number" ? (
-                          <span
-                            className={clsx(
-                              "text-muted-foreground",
-                              isLoan && "text-rose-400"
-                            )}
-                          >
-                            ({b.count})
-                          </span>
-                        ) : null}
-
-                        <span
-                          className={clsx(
-                            "ml-1 font-semibold",
-                            isLoan && "text-rose-600" // 🔴 red number for the Loans amount
-                          )}
-                        >
-                          {fmtCurrency(showTotal)}
+                        <span className={clsx("font-medium", isLoan && "text-rose-700")}>{b.label}</span>
+                        <span className={clsx("ml-1 font-semibold", isLoan && "text-rose-600")}>
+                          {fmtCurrency2(showTotal)}
                         </span>
                       </span>
                     );
                   })}
                 </CardContent>
               </Card>
-
-
             </div>
           </>
         )}
 
-        {/* Optional: if you still want to surface unexpected errors */}
         {status === "ready" && !overviews.length && errorMsg && (
           <Alert variant="destructive" className="mt-4">
             <AlertCircleIcon className="h-5 w-5" />
@@ -777,11 +559,8 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         )}
       </div>
 
-      {/* ── Sticky sub-tabs (locks like the top “Profile / Custodians / …” ribbon) ── */}
-      <div
-        className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px"
-        style={{ top: -16 }}
-      >
+      {/* Sticky sub-tabs */}
+      <div className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px" style={{ top: -16 }}>
         <div className="px-4">
           <Tabs
             value={(pathname?.split("/").at(-1) as string) ?? "holdings"}
@@ -802,9 +581,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         </div>
       </div>
 
-      {/* Page content under the sticky ribbons */}
       <div>{children}</div>
     </div>
-    // </AssetsExportContext.Provider>
   );
 }
