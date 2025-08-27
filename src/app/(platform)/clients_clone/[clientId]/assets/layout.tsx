@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import clsx from "clsx";
 import type { PluginOptionsByType } from "chart.js";
 
 import ChartDataLabels from "chartjs-plugin-datalabels";
@@ -29,6 +30,7 @@ import {
   ArcElement,
 } from "chart.js";
 import { MOCK_UI, USE_MOCKS, logRoute, pill } from "@/lib/dev-logger";
+import { fmtCurrency, fmtCurrency2 } from "@/lib/format";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -41,12 +43,13 @@ ChartJS.register(
   Tooltip,
   Filler,
   Legend,
-  ArcElement
+  ArcElement,
+  ChartDataLabels 
 );
 
-try { ChartJS.unregister(ChartDataLabels); } catch { /* no-op */ }
+// try { ChartJS.unregister(ChartDataLabels); } catch { /* no-op */ }
 
-export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
+export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => { });
 
 const TABS = [
   { slug: "holdings", label: "Holdings" },
@@ -63,9 +66,16 @@ type OverviewRow = {
   pie_chart_data: { charts: { data: number[]; labels: string[]; colors: string[]; title: string }[] };
 };
 
-type DLPie       = NonNullable<PluginOptionsByType<"pie">["datalabels"]>;
-type DLDoughnut  = NonNullable<PluginOptionsByType<"doughnut">["datalabels"]>;
-type DLBar       = NonNullable<PluginOptionsByType<"bar">["datalabels"]>;
+type Cards = {
+  total_assets: number;
+  total_liabilities: number;
+  net_assets: number;
+  aum_from_banks: number;
+};
+
+type DLPie = NonNullable<PluginOptionsByType<"pie">["datalabels"]>;
+type DLDoughnut = NonNullable<PluginOptionsByType<"doughnut">["datalabels"]>;
+type DLBar = NonNullable<PluginOptionsByType<"bar">["datalabels"]>;
 
 const assetKeys = [
   "cash_and_equivalents",
@@ -100,17 +110,32 @@ const keyAliases: Record<(typeof assetKeys)[number], string[]> = {
   loans: ["loans"],
 };
 
-const fmtCurrency = (v: number, digits = 0) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(v);
+// const fmtCurrency = (v: number, digits = 0) =>
+//   new Intl.NumberFormat("en-US", {
+//     style: "currency",
+//     currency: "USD",
+//     minimumFractionDigits: digits,
+//     maximumFractionDigits: digits,
+//   }).format(v);
 
 const parseDate = (s: string) => new Date(s);
 
-function Kpi({ title, value, caption }: { title: string; value: string; caption?: string }) {
+// function Kpi({ title, value, caption }: { title: string; value: string; caption?: string }) {
+//   return (
+//     <Card>
+//       <CardHeader className="pb-2">
+//         <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
+//         {caption ? <CardDescription>{caption}</CardDescription> : null}
+//       </CardHeader>
+//       <CardContent>
+//         <div className="text-2xl md:text-3xl font-semibold tracking-tight">{value}</div>
+//       </CardContent>
+//     </Card>
+//   );
+// }
+
+function Kpi({ title, value, caption, valueClassName }:
+  { title: string; value: string; caption?: string; valueClassName?: string; }) {
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -118,11 +143,19 @@ function Kpi({ title, value, caption }: { title: string; value: string; caption?
         {caption ? <CardDescription>{caption}</CardDescription> : null}
       </CardHeader>
       <CardContent>
-        <div className="text-2xl md:text-3xl font-semibold tracking-tight">{value}</div>
+        <div
+          className={clsx(
+            "text-2xl md:text-3xl font-semibold tracking-tight",
+            valueClassName
+          )}
+        >
+          {value}
+        </div>
       </CardContent>
     </Card>
   );
 }
+
 
 export default function AssetsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -145,25 +178,61 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
+  const [cards, setCards] = useState<Cards | null>(null);
+  const [trendApi, setTrendApi] = useState<{ label: string; net_assets: number }[] | null>(null);
+  const [breakdownApi, setBreakdownApi] = useState<Record<string, number> | null>(null);
+
+  // useEffect(() => {
+  //   if (!currClient) return;
+  //   (async () => {
+  //     setStatus("loading");
+  //     try {
+  //       const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
+  //       const resp = await axios.post(route, { client_id: currClient });
+  //       const payload = resp.data;
+  //       console.log("payload is: ", payload);
+  //       logRoute("/overviews", payload);
+  //       const rows: OverviewRow[] = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
+  //       if (!rows.length) throw new Error("No overview data");
+  //       setOverviews(rows);
+  //       setStatus("ready");
+  //       console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
+  //     } catch (err: any) {
+  //       setErrorMsg(err?.message || "Unknown error");
+  //       setOverviews([]);
+  //       setStatus("ready"); // still render; cards will show "—"/empty
+  //     }
+  //   })();
+  // }, [currClient]);
   useEffect(() => {
     if (!currClient) return;
     (async () => {
       setStatus("loading");
       try {
-        const route = `${process.env.NEXT_PUBLIC_API_URL}/overviews`;
-        const resp = await axios.post(route, { client_id: currClient });
-        const payload = resp.data;
-        console.log("payload is: ", payload);
-        logRoute("/overviews", payload);
-        const rows: OverviewRow[] = Array.isArray(payload) ? payload : payload?.overview_data ?? [];
-        if (!rows.length) throw new Error("No overview data");
+        // ✅ use the new Next route; no env var, no CORS
+        const { data } = await axios.get("/api/clients/assets/overview", {
+          params: { client_id: currClient },
+        });
+        console.log("overview api", data);
+
+        const rows: OverviewRow[] =
+          Array.isArray(data?.overview_data) ? data.overview_data : [];
+
         setOverviews(rows);
+        setCards(data?.computed?.cards ?? null);
+        setTrendApi(Array.isArray(data?.computed?.trend) ? data.computed.trend : null);
+        setBreakdownApi(data?.computed?.breakdown ?? null);
+
+        if (!rows.length) throw new Error("No overview data");
         setStatus("ready");
-        console.log(...pill("network", "#475569"), USE_MOCKS ? "mock" : "live");
+        console.log(...pill("network", "#475569"), "overview api");
       } catch (err: any) {
         setErrorMsg(err?.message || "Unknown error");
         setOverviews([]);
-        setStatus("ready"); // still render; cards will show "—"/empty
+        setCards(null);
+        setTrendApi(null);
+        setBreakdownApi(null);
+        setStatus("ready");
       }
     })();
   }, [currClient]);
@@ -314,24 +383,135 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     });
   }, [aggregatedTables]);
 
+  // const trend = useMemo(() => {
+  //   if (!overviews.length) return null;
+  //   const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
+  //   const labels = sorted.map((o) =>
+  //     new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
+  //   );
+  //   const data = sorted.map(
+  //     (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
+  //   );
+  //   return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
+  // }, [overviews]);
+
   const trend = useMemo(() => {
+    if (trendApi && trendApi.length) {
+      const labels = trendApi.map((t) => t.label);
+      const data = trendApi.map((t) => t.net_assets);
+      return {
+        labels,
+        datasets: [
+          { label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 },
+        ],
+      };
+    }
+
+    // fallback to legacy overviews if computed.trend isn’t there
     if (!overviews.length) return null;
-    const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
+    const sorted = [...overviews].sort(
+      (a, b) => +parseDate(a.month_date) - +parseDate(b.month_date)
+    );
     const labels = sorted.map((o) =>
-      new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
+      new Date(o.month_date).toLocaleDateString("en-US", {
+        year: "2-digit",
+        month: "short",
+      })
     );
     const data = sorted.map(
-      (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
+      (o) =>
+        (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce(
+          (a: number, b: number) => a + b,
+          0
+        ) || 0
     );
-    return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
-  }, [overviews]);
+    return {
+      labels,
+      datasets: [
+        { label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 },
+      ],
+    };
+  }, [trendApi, overviews]);
 
-  const lineOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v: any) => fmtCurrency(Number(v)) } } },
-  };
+  const breakdownChips = useMemo(() => {
+    if (breakdownApi) {
+      // turn the { "Direct Equities": 1234.56, ... } map into a chip array
+      return Object.entries(breakdownApi).map(([label, total]) => ({
+        key: label,
+        label,
+        // count is unknown from the computed API; omit it
+        count: undefined as number | undefined,
+        total,
+      }));
+    }
+
+    // fallback: compute from aggregatedTables (legacy)
+    return assetKeys.map((k) => {
+      const rows = aggregatedTables[k] || [];
+      const total = rows.reduce(
+        (a, r) => a + (Number((r as any)?.balanceUsd ?? 0) || 0),
+        0
+      );
+      return { key: k, label: assetLabels[k], count: rows.length, total };
+    });
+  }, [breakdownApi, aggregatedTables]);
+
+
+  // const lineOptions = {
+  //   responsive: true,
+  //   maintainAspectRatio: false,
+  //   plugins: { legend: { display: false } },
+  //   scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v: any) => fmtCurrency(Number(v)) } } },
+  // };
+
+  const lineOptions = useMemo(() => {
+    const values = (trend?.datasets?.[0]?.data as number[]) ?? [];
+    const minV = values.length ? Math.min(...values) : 0;
+    const maxV = values.length ? Math.max(...values) : 0;
+    // ~8% vertical padding (fallback to a small pad if flat series)
+    const pad = (maxV - minV) * 0.08 || (maxV || 1) * 0.08;
+
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { left: 8, right: 8, top: 8, bottom: 8 } },
+      plugins: {
+        legend: { display: true },
+        // make sure no point value is drawn on the line
+        datalabels: {
+        display: true,
+        formatter: (v: number) => fmtCurrency2(Number(v)),
+        anchor: 'center',   // attach to the point
+        align:  'right',     // <-- move label to the LEFT of the point
+        offset: 10,         // distance from the point (tune to taste)
+        color: '#111827',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        borderColor: '#bedcb5ff',
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: { left: 6, right: 6, top: 2, bottom: 2 },
+        clip: false,
+      } as any,
+        padding: { left: 6, right: 6, top: 2, bottom: 2 },
+      },
+      elements: {
+        line: { tension: 0.35 },
+        point: { radius: 3 },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: {
+          beginAtZero: false,
+          suggestedMin: minV - pad,
+          suggestedMax: maxV + pad,
+          ticks: {
+            padding: 10, // a bit more breathing room
+            callback: (v: any) => fmtCurrency2(Number(v)),
+          },
+        },
+      },
+    };
+  }, [trend]);
 
   const base = `/clients_clone/${clientId ?? ""}/assets`;
 
@@ -416,8 +596,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                   }}
                   plugins={[]}
                 />
-
-
               </CardContent>
             </Card>
           ))}
@@ -459,13 +637,36 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         {status === "ready" && (
           <>
             {/* KPI cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <Kpi title="Total Assets" value={fmtCurrency(kpis.assets)} caption="Gross long positions" />
               <Kpi title="Total Liabilities" value={fmtCurrency(kpis.liabilities)} caption="Loans & short values" />
               <Kpi title="Net Assets" value={fmtCurrency(kpis.netAssets)} caption="Assets − Liabilities" />
               <Kpi
                 title="AUM (from banks)"
                 value={kpis.aumFromPie ? fmtCurrency(kpis.aumFromPie) : "—"}
+                caption="Sum of bank exposure"
+              />
+            </div> */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <Kpi
+                title="Total Assets"
+                value={fmtCurrency(cards ? cards.total_assets : kpis.assets)}
+                caption="Gross long positions"
+              />
+              <Kpi
+                title="Total Liabilities"
+                value={fmtCurrency(Math.abs(cards ? cards.total_liabilities : kpis.liabilities))}
+                caption="Loans & short values"
+                valueClassName="text-red-600"
+              />
+              <Kpi
+                title="Net Assets"
+                value={fmtCurrency(cards ? cards.net_assets : kpis.netAssets)}
+                caption="Assets − Liabilities"
+              />
+              <Kpi
+                title="AUM (from banks)"
+                value={fmtCurrency(cards ? cards.aum_from_banks : (kpis.aumFromPie ?? 0))}
                 caption="Sum of bank exposure"
               />
             </div>
@@ -486,7 +687,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                 </CardContent>
               </Card>
 
-              <Card className={MOCK_UI(USE_MOCKS)}>
+              {/* <Card className={MOCK_UI(USE_MOCKS)}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
                   <CardDescription>By asset bucket</CardDescription>
@@ -504,7 +705,64 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                     </span>
                   ))}
                 </CardContent>
+              </Card> */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Breakdown (quick view)</CardTitle>
+                  <CardDescription>By asset bucket</CardDescription>
+                </CardHeader>
+
+                <CardContent className="flex flex-wrap gap-2">
+                  {breakdownChips.map((b) => {
+                    const isLoan = b.label === "Loans";
+                    const showTotal =
+                      isLoan ? Math.abs(Number(b.total || 0)) : Number(b.total || 0);
+
+                    return (
+                      <span
+                        key={b.key}
+                        className={clsx(
+                          "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs",
+                          isLoan
+                            ? "bg-rose-50 border-rose-200" // 🌸 pink chip for Loans
+                            : "bg-muted/40"
+                        )}
+                        title={
+                          typeof b.count === "number"
+                            ? `${b.label} • ${b.count} positions`
+                            : b.label
+                        }
+                      >
+                        <span className={clsx("font-medium", isLoan && "text-rose-700")}>
+                          {b.label}
+                        </span>
+
+                        {typeof b.count === "number" ? (
+                          <span
+                            className={clsx(
+                              "text-muted-foreground",
+                              isLoan && "text-rose-400"
+                            )}
+                          >
+                            ({b.count})
+                          </span>
+                        ) : null}
+
+                        <span
+                          className={clsx(
+                            "ml-1 font-semibold",
+                            isLoan && "text-rose-600" // 🔴 red number for the Loans amount
+                          )}
+                        >
+                          {fmtCurrency(showTotal)}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </CardContent>
               </Card>
+
+
             </div>
           </>
         )}
