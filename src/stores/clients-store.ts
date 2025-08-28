@@ -161,96 +161,39 @@ export const useClientStore = create<ClientState>()(
       // ---------- UPDATED: pulls from API, then (optionally) merges /mocks/clients.json ----------
       loadClients: async () => {
         const { id: user_id } = useUserStore.getState();
+        if (!user_id) {
+          console.warn("No user logged in – cannot load clients.");
+          set(() => ({ clients: {}, order: [] }));
+          return;
+        }
 
         let apiList: any[] = [];
-        if (user_id) {
-          try {
-            const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/clients`, { params: { user_id } });
-            if (res.status === 200) {
-              apiList = res.data?.clients ?? res.data ?? [];
-            }
-          } catch (e) {
-            console.warn("API clients fetch failed, will still try local mocks:", e);
-          }
-        } else {
-          console.warn("No user logged in – skipping API clients; will still try local mocks.");
-        }
-
-        // Try to read /public/mocks/clients.json, ignore if missing
-        let mockList: any[] = [];
         try {
-          const resp = await fetch("/mocks/clients.json", { cache: "no-store" });
-          if (resp.ok) {
-            mockList = await resp.json();
-          }
-        } catch {
-          /* ignore – file may not exist */
+          // ✅ use internal Next route; only the logged-in user’s clients are returned
+          const res = await axios.get("/api/clients", { params: { user_id } });
+          apiList = res.data?.clients ?? [];
+        } catch (e) {
+          console.error("Failed to load clients from /api/clients:", e);
+          apiList = [];
         }
-
-        // Merge: API rows take precedence; add mock rows that don't exist, or fill missing summary fields.
-        const byId: Record<string, any> = {};
-        for (const row of apiList) {
-          const id = String(row.id);
-          byId[id] = { ...row, id };
-        }
-        for (const row of mockList) {
-          const id = String(row.id);
-          if (!byId[id]) {
-            byId[id] = { ...row, id };
-          } else {
-            // enrich summary-like fields if API didn't send them
-            byId[id] = { ...row, ...byId[id], id };
-          }
-        }
-
-        const mergedList = Object.values(byId);
 
         set(() => {
           const clients: Record<string, Client> = {};
           const order: string[] = [];
 
-          for (const row of mergedList) {
-            const {
-              id,
-              name,
-              pie_chart_data = null,
-              code,
-              total_custodians,
-              net_assets_usd,
-              total_assets_usd,
-              total_debts_usd,
-              rm,
-              mandate_type,
-              risk_profile,
-              status,
-              app_status,
-              starred,
-            } = row;
-
+          for (const row of apiList) {
+            const { id, name, pieChartData, summary } = row;
             clients[String(id)] = {
               id: String(id),
               name,
-              pieChartData: pie_chart_data,
-              summary: {
-                code,
-                total_custodians,
-                net_assets_usd,
-                total_assets_usd,
-                total_debts_usd,
-                rm,
-                mandate_type,
-                risk_profile,
-                status,
-                app_status,
-                starred,
-              },
+              pieChartData: pieChartData ?? null,
+              summary: summary ?? {},
               news: null,
               alerts: null,
               overviews: [],
             };
             order.push(String(id));
           }
-
           return { clients, order };
         });
       },
