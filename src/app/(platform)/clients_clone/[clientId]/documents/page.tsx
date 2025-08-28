@@ -303,10 +303,10 @@ export default function DocumentsPage() {
             <Table>
               <TableHeader className="sticky top-0 bg-background">
                 <TableRow>
-                  <TableHead className="w-[15%]">Bank</TableHead>
-                  <TableHead className="w-[15%]">Account Number</TableHead>
-                  <TableHead className="w-[44%]">Name</TableHead>
-                  <TableHead className="w-[13%]">As Of Date</TableHead>
+                  <TableHead className="w-[18%]">Bank</TableHead>
+                  <TableHead className="w-[18%]">Account Number</TableHead>
+                  <TableHead className="w-[35%]">Name</TableHead>
+                  <TableHead className="w-[16%]">As Of Date</TableHead>
                   <TableHead className="w-[13%]">Upload Date</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
