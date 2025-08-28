@@ -268,21 +268,22 @@ export default function HoldingsPage() {
     };
   }, [effectiveClientId, monthsReady, months, selMonth]);
 
-
-
-
   // PDF helpers (unchanged)
   const tableForPdf = useCallback(
     (key: AssetKey) => {
-      const columns = ["Bank", "Name", "Currency", "Units", "Balance (USD)"];
+      const columns = ["Bank", "Name", "Ticker", "ISIN", "Currency", "Units", "Balance (USD)"];
       const body = (aggregatedTables[key] ?? []).map((r) => [
         (r as any).bank,
         (r as any).name ?? "",
+        (r as any).ticker ?? "—",
+        (r as any).isin ?? "—",
         (r as any).currency ?? "",
         (r as any).units ?? "",
         fmtCurrency(
           typeof (r as any).balanceUsd === "number"
             ? (r as any).balanceUsd
+            : typeof (r as any).balance_usd === "number"
+            ? (r as any).balance_usd
             : typeof (r as any).balance === "number"
             ? (r as any).balance
             : 0
@@ -292,6 +293,7 @@ export default function HoldingsPage() {
     },
     [aggregatedTables]
   );
+
 
   const handleDownloadPdf = useCallback(async () => {
     if (!current) return;
@@ -586,7 +588,9 @@ export default function HoldingsPage() {
                 <TableHeader className="bg-background">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="min-w-[120px]">Bank</TableHead>
-                    <TableHead className="min-w-[220px]">Name</TableHead>
+                    <TableHead className="min-w-[240px]">Name</TableHead>
+                    <TableHead className="min-w-[100px]">Ticker</TableHead>
+                    <TableHead className="min-w-[160px]">ISIN</TableHead>
                     <TableHead className="min-w-[100px]">Currency</TableHead>
                     <TableHead className="min-w-[100px]">Units</TableHead>
                     <TableHead className="min-w-[160px] text-right">Balance</TableHead>
@@ -602,6 +606,8 @@ export default function HoldingsPage() {
                     const balance =
                       typeof r?.balanceUsd === "number"
                         ? fmtCurrency(r.balanceUsd)
+                        : typeof r?.balance_usd === "number"
+                        ? fmtCurrency(r.balance_usd)
                         : typeof r?.balance === "number"
                         ? fmtCurrency(r.balance)
                         : typeof r?.balance_in_currency === "number"
@@ -612,6 +618,8 @@ export default function HoldingsPage() {
                       <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
                         <TableCell className="py-3">{r?.bank ?? "—"}</TableCell>
                         <TableCell className="py-3">{r?.name ?? "—"}</TableCell>
+                        <TableCell className="py-3">{r?.ticker ?? "—"}</TableCell>
+                        <TableCell className="py-3">{r?.isin ?? "—"}</TableCell>
                         <TableCell className="py-3">{r?.currency ?? "—"}</TableCell>
                         <TableCell className="py-3">{units}</TableCell>
                         <TableCell className="py-3 text-right">{balance}</TableCell>
