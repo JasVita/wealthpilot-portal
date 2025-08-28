@@ -3,31 +3,18 @@ import type { NextRequest } from "next/server";
 import { validateToken } from "@/lib/auth-token";
 
 /**
- * Global middleware
- * - Keeps your current protected pages
- * - Explicitly bypasses API and static/Next assets to avoid redirect loops
+ * Auth middleware for pages only (API & static excluded).
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ✅ Never run auth redirects on API or static assets
-  if (
-    pathname.startsWith("/api/") ||         // all API routes
-    pathname.startsWith("/_next/") ||       // Next.js build assets
-    pathname.startsWith("/favicon") ||      // favicon.ico
-    pathname.startsWith("/assets/") ||      // any public assets folder you use
-    pathname.startsWith("/images/") ||      // public images
-    /\.(?:png|jpg|jpeg|svg|gif|ico|webp|txt|xml|map)$/i.test(pathname) // file extensions
-  ) {
-    return NextResponse.next();
-  }
-
-  const token = req.cookies.get("auth")?.value;
-  const user = await validateToken(token);
-
-  // publicly reachable pages
+  // public pages
   const isAuthPage =
     pathname.startsWith("/login") || pathname.startsWith("/signup");
+
+  // Read/validate cookie
+  const token = req.cookies.get("auth")?.value;
+  const user = await validateToken(token);
 
   if (user && isAuthPage) {
     // Logged-in users don’t need /login or /signup
@@ -43,27 +30,18 @@ export async function middleware(req: NextRequest) {
 }
 
 /**
- * Routes protected by this middleware.
- * Public pages (/login, /signup) are not listed so they stay reachable.
- * NOTE: API routes are intentionally NOT included here and are bypassed above.
+ * Only run on routes that are NOT:
+ *   - /api/*
+ *   - /_next/static/* and /_next/image/*
+ *   - favicon, images, and other asset files
+ *
+ * This is the canonical Next.js pattern to avoid middleware on APIs/static,
+ * preventing redirect loops like you saw on /api/clients.
  */
 export const config = {
   matcher: [
-    "/about-us/:path*",
-    "/ai-assistant/:path*",
-    "/clients-dashboard",
-    "/client-settings/:path*",
-    "/clients/:path*",
-    "/compliance/:path*",
-    "/crm/:path*",
-    "/dashboard/:path*",
-    "/documents/:path*",
-    "/fee-bill/:path*",
-    "/order-management/:path*",
-    "/settings/:path*",
-    "/sp-lifecycle/:path*",
-    "/trade-retrocesson/:path*",
-    "/login",
+    // Everything except: api|_next/static|_next/image|favicon|images|assets and common file extensions
+    "/((?!api|_next/static|_next/image|favicon\\.ico|favicon\\.png|images|assets|.*\\.(?:png|jpg|jpeg|svg|gif|webp|ico|txt|xml|map)).*)",
   ],
 };
 
