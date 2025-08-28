@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import clsx from "clsx";
 import type { PluginOptionsByType } from "chart.js";
 
@@ -29,7 +28,6 @@ import {
   Legend,
   ArcElement,
 } from "chart.js";
-import { MOCK_UI, USE_MOCKS, logRoute, pill } from "@/lib/dev-logger";
 import { fmtCurrency, fmtCurrency2 } from "@/lib/format";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
