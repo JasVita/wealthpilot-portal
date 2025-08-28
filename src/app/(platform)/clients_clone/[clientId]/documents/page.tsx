@@ -40,6 +40,7 @@ export interface Doc {
   exp?: string | null;
   assets?: any;
   transactions?: any;
+  createdAt?: string | null;   // ✅ add this line
 }
 
 /* -------------------- icons -------------------- */
@@ -111,6 +112,43 @@ function displayName(d: Partial<Doc>) {
     return [d?.bankname, ymd].filter(Boolean).join(" — ") || `Document ${d?.id ?? ""}`;
   }
   return fileNameFromUrl(d?.pdf_url) || fileNameFromUrl(d?.excel_url) || `Document ${d?.id ?? ""}`;
+}
+
+function NameCell({
+  filename,
+  href,
+}: {
+  filename: string;
+  href?: string;
+}) {
+  // Use FileTypeIcon you already have
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <FileTypeIcon filename={filename} />
+      <div className="min-w-0 flex-1">
+        {href ? (
+          <Link
+            href={href}
+            className="block min-w-0 text-primary hover:underline"
+            prefetch={false}
+            title={filename}
+          >
+            {/* Truncate uses the full width of the Name column */}
+            <span className="block w-full overflow-hidden text-ellipsis whitespace-nowrap">
+              {filename}
+            </span>
+          </Link>
+        ) : (
+          <span
+            className="block w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            title={filename}
+          >
+            {filename}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* -------------------- folders -------------------- */
@@ -235,26 +273,28 @@ export default function DocumentsPage() {
             </div>
           </div>
 
+          {/* Folders: hide those with 0 (except "All") */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {FOLDERS.map(({ key, label, icon: Icon }) => {
-              const disabled = key !== "all" && counts[key] === 0;
-              const active = folder === key;
-              return (
-                <Button
-                  key={key}
-                  variant={active ? "default" : "outline"}
-                  size="sm"
-                  className={clsx("whitespace-nowrap", disabled && "opacity-50 pointer-events-none")}
-                  onClick={() => setFolder(key)}
-                >
-                  <Icon className="h-4 w-4 mr-1.5" />
-                  {label}
-                  <span className={clsx("ml-2 rounded px-1.5 text-xs", active ? "bg-black/10" : "bg-muted")}>
-                    {counts[key]}
-                  </span>
-                </Button>
-              );
-            })}
+            {FOLDERS
+              .filter(({ key }) => key === "all" || (counts[key] ?? 0) > 0)
+              .map(({ key, label, icon: Icon }) => {
+                const active = folder === key;
+                return (
+                  <Button
+                    key={key}
+                    variant={active ? "default" : "outline"}
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={() => setFolder(key)}
+                  >
+                    <Icon className="h-4 w-4 mr-1.5" />
+                    {label}
+                    <span className={clsx("ml-2 rounded px-1.5 text-xs", active ? "bg-black/10" : "bg-muted")}>
+                      {counts[key]}
+                    </span>
+                  </Button>
+                );
+              })}
           </div>
         </CardHeader>
 
@@ -263,88 +303,71 @@ export default function DocumentsPage() {
             <Table>
               <TableHeader className="sticky top-0 bg-background">
                 <TableRow>
-                  <TableHead>Bank</TableHead>
-                  <TableHead>Account Number</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>As Of Date</TableHead>
-                  <TableHead>Upload Date</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Upload User</TableHead>
+                  <TableHead className="w-[15%]">Bank</TableHead>
+                  <TableHead className="w-[15%]">Account Number</TableHead>
+                  <TableHead className="w-[44%]">Name</TableHead>
+                  <TableHead className="w-[13%]">As Of Date</TableHead>
+                  <TableHead className="w-[13%]">Upload Date</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
 
+
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
-                      Loading documents...
-                    </TableCell>
+                    <TableCell colSpan={6} className="text-center py-8">Loading documents...</TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? (
                   filtered.map((d, i) => {
-                    const d2 = daysTo(d.exp ?? "—");
-                    const expBadge =
-                      !d.exp || d.exp === "—" ? null : d2 <= 0 ? (
-                        <span className="ml-2 text-xs text-red-600">Expired</span>
-                      ) : d2 <= 30 ? (
-                        <span className="ml-2 text-xs text-amber-600">Expiring in {d2}d</span>
-                      ) : null;
-
                     const safeFilename =
                       fileNameFromUrl(d.pdf_url) ||
                       fileNameFromUrl(d.excel_url) ||
                       (typeof d.name === "string" ? d.name : "");
 
                     const label = displayName(d);
+                    const asOf = d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—";
+                    const uploaded = d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "—";
+                    const docHref = d.id ? `/clients_clone/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}` : undefined;
 
                     return (
                       <TableRow key={(d.id ?? i).toString()}>
-                        <TableCell>{d.bankname ?? "—"}</TableCell>
-                        <TableCell>{d.account_number ?? "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <FileTypeIcon filename={safeFilename} />
-                            {d.id ? (
-                              <Link
-                                href={`/clients_clone/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}`}
-                                className="text-primary hover:underline"
-                                title={safeFilename}
-                                prefetch={false}
-                              >
-                                {safeFilename || label}
-                              </Link>
-                            ) : (
-                              <span className="text-muted-foreground" title={safeFilename}>
-                                {safeFilename || label}
-                              </span>
-                            )}
-                          </div>
+                        {/* Bank with ellipsis */}
+                        <TableCell className="max-w-0">
+                          <span
+                            className="block overflow-hidden text-ellipsis whitespace-nowrap"
+                            title={d.bankname ?? "—"}
+                          >
+                            {d.bankname ?? "—"}
+                          </span>
                         </TableCell>
-                        <TableCell>
-                          {d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {d.exp ?? "—"}
-                          {expBadge}
-                        </TableCell>
-                        <TableCell>{"—"}</TableCell>
-                        <TableCell>{"—"}</TableCell>
 
-                        {/* ⬇️ Make Actions behave like the old grid: DocDialog + DeleteButton */}
+                        {/* Account Number with ellipsis */}
+                        <TableCell className="max-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={d.account_number ?? "—"}>{d.account_number ?? "—"}</span>
+                        </TableCell>
+
+                        {/* Name cell — icon + truncated filename/link */}
+                        <TableCell className="min-w-0"><NameCell filename={safeFilename || label} href={docHref} /></TableCell>
+
+                        {/* As Of Date (short) */}
+                        <TableCell className="max-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={asOf}>{asOf}</span>
+                        </TableCell>
+
+                        {/* Upload Date (short) */}
+                        <TableCell className="max-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={uploaded}>{uploaded}</span>
+                        </TableCell>
+
+                        {/* Actions */}
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-2">
-                            {/* View / Edit handled internally by DocDialog (same as before) */}
-                            {/* <DocDialog doc={d as Doc} mode="view" /> */}
-
-                            {/* Download keeps your existing logic */}
                             <Button size="icon" variant="ghost" aria-label="Download" asChild>
                               <a href={d.pdf_url ?? d.excel_url ?? "#"} target="_blank" rel="noopener noreferrer">
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-
-                            {/* Delete uses the same DeleteButton as old code */}
                             <DeleteButton doc={d as Doc} docs={docs} setDocs={setDocs} />
                           </div>
                         </TableCell>
@@ -353,12 +376,11 @@ export default function DocumentsPage() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                      No documents found in this folder.
-                    </TableCell>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No documents found in this folder.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
+
             </Table>
           </div>
         </CardContent>

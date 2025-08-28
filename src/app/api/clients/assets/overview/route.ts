@@ -1,3 +1,4 @@
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=44&year=2025&month=7'
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
