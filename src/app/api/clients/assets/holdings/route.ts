@@ -25,16 +25,54 @@ const CANON_KEYS = [
   "loans",
 ] as const;
 
+/* ----------- helpers to ensure ticker/isin fields ----------- */
+function parseTickerIsin(extra: unknown): { ticker?: string; isin?: string } {
+  if (!extra) return {};
+  const s = String(extra);
+  const out: { ticker?: string; isin?: string } = {};
+
+  // match "Ticker: NVDA" (case-insensitive), allow dots/dashes
+  const t = s.match(/ticker\s*:\s*([A-Za-z0-9.\-]+)/i);
+  if (t?.[1]) out.ticker = t[1].toUpperCase();
+
+  // match "ISIN: US67066G1040"
+  const i = s.match(/isin\s*:\s*([A-Za-z0-9]+)/i);
+  if (i?.[1]) out.isin = i[1].toUpperCase();
+
+  return out;
+}
+
 function rowsArray(x: any): any[] {
   const arr = Array.isArray(x) ? x : Array.isArray(x?.rows) ? x.rows : [];
-  return arr.map((r: any) => ({
-    ...r,
-    balance:
+  return arr.map((r: any) => {
+    // prefer explicit fields; else parse from r.extra (or r?.extra-like)
+    const parsed = parseTickerIsin(r?.extra ?? r?.Extra ?? r?.details ?? r?.info);
+
+    // normalize ticker / isin casing & fallbacks
+    const ticker =
+      (r?.ticker ?? r?.Ticker ?? parsed.ticker ?? null) &&
+      String(r?.ticker ?? r?.Ticker ?? parsed.ticker).toUpperCase();
+
+    const isin =
+      (r?.isin ?? r?.ISIN ?? parsed.isin ?? null) &&
+      String(r?.isin ?? r?.ISIN ?? parsed.isin).toUpperCase();
+
+    // normalize USD balance (keep original fields too)
+    const balance =
       typeof r.balance === "number" ? r.balance
+      : typeof r.balance_usd === "number" ? r.balance_usd
       : typeof r.balanceUsd === "number" ? r.balanceUsd
       : typeof r.balance_in_currency === "number" ? r.balance_in_currency
-      : 0,
-  }));
+      : 0;
+
+    return {
+      ...r,
+      // keep the canonicalized fields alongside originals
+      ticker: ticker ?? null,
+      isin: isin ?? null,
+      balance,
+    };
+  });
 }
 
 function normalizeToCompat(raw: any) {
