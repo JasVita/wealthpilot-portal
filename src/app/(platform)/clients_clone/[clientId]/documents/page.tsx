@@ -114,6 +114,43 @@ function displayName(d: Partial<Doc>) {
   return fileNameFromUrl(d?.pdf_url) || fileNameFromUrl(d?.excel_url) || `Document ${d?.id ?? ""}`;
 }
 
+function NameCell({
+  filename,
+  href,
+}: {
+  filename: string;
+  href?: string;
+}) {
+  // Use FileTypeIcon you already have
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <FileTypeIcon filename={filename} />
+      <div className="min-w-0 flex-1">
+        {href ? (
+          <Link
+            href={href}
+            className="block min-w-0 text-primary hover:underline"
+            prefetch={false}
+            title={filename}
+          >
+            {/* Truncate uses the full width of the Name column */}
+            <span className="block w-full overflow-hidden text-ellipsis whitespace-nowrap">
+              {filename}
+            </span>
+          </Link>
+        ) : (
+          <span
+            className="block w-full overflow-hidden text-ellipsis whitespace-nowrap"
+            title={filename}
+          >
+            {filename}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* -------------------- folders -------------------- */
 type FolderKey =
   | "all"
@@ -266,21 +303,20 @@ export default function DocumentsPage() {
             <Table>
               <TableHeader className="sticky top-0 bg-background">
                 <TableRow>
-                  <TableHead>Bank</TableHead>
-                  <TableHead>Account Number</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>As Of Date</TableHead>
-                  <TableHead>Upload Date</TableHead>
+                  <TableHead className="w-[15%]">Bank</TableHead>
+                  <TableHead className="w-[15%]">Account Number</TableHead>
+                  <TableHead className="w-[44%]">Name</TableHead>
+                  <TableHead className="w-[13%]">As Of Date</TableHead>
+                  <TableHead className="w-[13%]">Upload Date</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
 
+
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
-                      Loading documents...
-                    </TableCell>
+                    <TableCell colSpan={6} className="text-center py-8">Loading documents...</TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? (
                   filtered.map((d, i) => {
@@ -290,35 +326,41 @@ export default function DocumentsPage() {
                       (typeof d.name === "string" ? d.name : "");
 
                     const label = displayName(d);
-
                     const asOf = d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—";
                     const uploaded = d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "—";
+                    const docHref = d.id ? `/clients_clone/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}` : undefined;
 
                     return (
                       <TableRow key={(d.id ?? i).toString()}>
-                        <TableCell>{d.bankname ?? "—"}</TableCell>
-                        <TableCell>{d.account_number ?? "—"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <FileTypeIcon filename={safeFilename} />
-                            {d.id ? (
-                              <Link
-                                href={`/clients_clone/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}`}
-                                className="text-primary hover:underline"
-                                title={safeFilename}
-                                prefetch={false}
-                              >
-                                {safeFilename || label}
-                              </Link>
-                            ) : (
-                              <span className="text-muted-foreground" title={safeFilename}>
-                                {safeFilename || label}
-                              </span>
-                            )}
-                          </div>
+                        {/* Bank with ellipsis */}
+                        <TableCell className="max-w-0">
+                          <span
+                            className="block overflow-hidden text-ellipsis whitespace-nowrap"
+                            title={d.bankname ?? "—"}
+                          >
+                            {d.bankname ?? "—"}
+                          </span>
                         </TableCell>
-                        <TableCell>{asOf}</TableCell>
-                        <TableCell>{uploaded}</TableCell>
+
+                        {/* Account Number with ellipsis */}
+                        <TableCell className="max-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={d.account_number ?? "—"}>{d.account_number ?? "—"}</span>
+                        </TableCell>
+
+                        {/* Name cell — icon + truncated filename/link */}
+                        <TableCell className="min-w-0"><NameCell filename={safeFilename || label} href={docHref} /></TableCell>
+
+                        {/* As Of Date (short) */}
+                        <TableCell className="max-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={asOf}>{asOf}</span>
+                        </TableCell>
+
+                        {/* Upload Date (short) */}
+                        <TableCell className="max-w-0">
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={uploaded}>{uploaded}</span>
+                        </TableCell>
+
+                        {/* Actions */}
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-2">
                             <Button size="icon" variant="ghost" aria-label="Download" asChild>
@@ -334,9 +376,7 @@ export default function DocumentsPage() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      No documents found in this folder.
-                    </TableCell>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No documents found in this folder.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
