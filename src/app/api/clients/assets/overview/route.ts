@@ -80,33 +80,44 @@ function palette(n: number): string[] {
 
 /** Build chart datasets and also return granular totals we’ll reuse for cards/breakdown */
 function buildAggregates(tableData: BankBlock[]) {
-  // BANK AUM
+  // BANK AUM (include both legacy and new keys)
   const bankTotals = new Map<string, number>();
   tableData.forEach((b) => {
     const total =
+      // liabilities first so you can see them grouped
       sumCategory(b.loans) +
+      // asset buckets
       sumCategory(b.equity_funds ?? b.equities_fund) +
       sumCategory(b.direct_equities) +
       sumCategory(b.alternative_funds ?? b.alternative_fund) +
       sumCategory(b.fixed_income_funds) +
       sumCategory(b.direct_fixed_income) +
-      sumCategory(b.structured_products) +
-      sumCategory(b.cash_and_equivalents);
+      // 👇 NEW: include both "structured_products" and "structured_product"
+      sumCategory((b as any).structured_products) +
+      sumCategory((b as any).structured_product) +
+      // 👇 NEW: include both "cash_and_equivalents" and "cash_equivalents"
+      sumCategory((b as any).cash_and_equivalents) +
+      sumCategory((b as any).cash_equivalents);
+
     const bank = (b.bank ?? "—").toString();
     bankTotals.set(bank, (bankTotals.get(bank) || 0) + total);
   });
   const bankLabels = Array.from(bankTotals.keys());
   const bankData = bankLabels.map((k) => bankTotals.get(k) || 0);
 
-  // ASSET BUCKET TOTALS (canonical -> sum USD)
+  // ASSET BUCKET TOTALS (canonical -> list all variants)
   const buckets: Array<[string, string[]]> = [
-    ["Cash And Equivalents", ["cash_and_equivalents"]],
+    // 👇 add both for cash
+    ["Cash And Equivalents", ["cash_and_equivalents", "cash_equivalents"]],
     ["Direct Fixed Income", ["direct_fixed_income"]],
     ["Fixed Income Funds", ["fixed_income_funds"]],
     ["Direct Equities", ["direct_equities"]],
+    // existing variants for equity funds
     ["Equities Fund", ["equities_fund", "equity_funds"]],
+    // existing variants for alternatives
     ["Alternative Fund", ["alternative_fund", "alternative_funds"]],
-    ["Structured Product", ["structured_products"]],
+    // 👇 add both for structured products
+    ["Structured Product", ["structured_products", "structured_product"]],
     ["Loans", ["loans"]],
   ];
   const assetTotals = new Map<string, number>();
@@ -120,13 +131,22 @@ function buildAggregates(tableData: BankBlock[]) {
   const assetLabels = buckets.map(([pretty]) => pretty);
   const assetData = assetLabels.map((k) => assetTotals.get(k) || 0);
 
-  // CURRENCY SPLIT
+  // CURRENCY SPLIT — already inclusive here; keep both singular/plural names
   const ccyTotals = new Map<string, number>();
   tableData.forEach((b) => {
     for (const k of [
-      "cash_and_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities",
-      "equities_fund", "equity_funds", "alternative_fund", "alternative_funds",
-      "structured_products", "loans",
+      "cash_equivalents",            // NEW-series
+      "cash_and_equivalents",        // legacy
+      "direct_fixed_income",
+      "fixed_income_funds",
+      "direct_equities",
+      "equities_fund",
+      "equity_funds",
+      "alternative_fund",
+      "alternative_funds",
+      "structured_product",          // NEW-series
+      "structured_products",         // legacy
+      "loans",
     ]) {
       for (const r of rowsOf((b as any)[k])) {
         const c = (r?.currency ?? "USD").toString();
@@ -143,11 +163,11 @@ function buildAggregates(tableData: BankBlock[]) {
   const grossAssets = assetLabels
     .filter((l) => l !== "Loans")
     .reduce((a, l) => a + (assetTotals.get(l) || 0), 0);
-  const loans = assetTotals.get("Loans") || 0;          // usually negative
-  const netAssets = grossAssets + loans;                // assets + (negative loans)
-  const aumFromBanks = bankData.reduce((a, b) => a + b, 0); // equals net assets if rows are consistent
+  const loans = assetTotals.get("Loans") || 0;
+  const netAssets = grossAssets + loans;
+  const aumFromBanks = bankData.reduce((a, b) => a + b, 0);
 
-  // BREAKDOWN (2 decimals)
+  // Breakdown with 2dp
   const breakdown: Record<string, number> = {};
   for (const l of assetLabels) breakdown[l] = r2(assetTotals.get(l) || 0);
 
@@ -157,12 +177,10 @@ function buildAggregates(tableData: BankBlock[]) {
       { title: "overall_asset_class_breakdown", labels: assetLabels, data: assetData, colors: palette(assetLabels.length) },
       { title: "overall_currency_breakdown", labels: ccyLabels, data: ccyData, colors: palette(ccyLabels.length) },
     ],
-    totals: {
-      grossAssets, loans, netAssets, aumFromBanks,
-      breakdown
-    }
+    totals: { grossAssets, loans, netAssets, aumFromBanks, breakdown },
   };
 }
+
 
 export async function POST(req: NextRequest) {
   try {

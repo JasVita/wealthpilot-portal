@@ -49,6 +49,7 @@ export const AssetsExportContext = createContext<(fn?: () => void) => void>(() =
 
 const TABS = [
   { slug: "holdings", label: "Holdings" },
+  { slug: "custodian", label: "Custodian Distribution" },
   { slug: "cash", label: "Cash Distribution" },
   { slug: "analysis", label: "Analysis" },
   { slug: "pnl", label: "Profit & Loss" },
@@ -568,7 +569,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
             }}
             className="w-full"
           >
-            <TabsList className="grid w-full sm:w-auto sm:inline-grid grid-cols-2 sm:grid-cols-6">
+            <TabsList className="grid w-full sm:w-auto sm:inline-grid grid-cols-2 sm:grid-cols-7">
               {TABS.map((t) => (
                 <TabsTrigger key={t.slug} value={t.slug}>
                   {t.label}
