@@ -7,7 +7,7 @@ import { useClientStore } from "@/stores/clients-store";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Landmark, CircleHelp } from "lucide-react";
-import { fmtCurrency, fmtShortUSD } from "@/lib/format";
+import { fmtCurrency, fmtShortUSD } from "@/lib/format"; 
 
 import {
   Chart as ChartJS,
@@ -60,6 +60,8 @@ function groupByBank(
     bucket.total += r.amount;
     bucket.items.push({ ...r, chips });
   }
+
+  // sort banks by total, and accounts within banks
   const banks = Array.from(byBank.entries()).map(([bank, v]) => ({ bank, total: v.total, items: v.items }));
   banks.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   banks.forEach((b) => b.items.sort((a, c) => Math.abs(c.amount) - Math.abs(a.amount)));
@@ -95,12 +97,12 @@ function Chips({ chips }: { chips: Chip[] }) {
 }
 /* ---------------------------------------------------------------- */
 
-export default function CashPage() {
+export default function CustodianPage() {
   const { currClient } = useClientStore();
   const searchParams = useSearchParams();
-  const urlMode = (searchParams?.get("mode") || "currency").toLowerCase(); // default Currency
 
-  const [data, setData] = useState<CashApi | null>(null);
+  // ✅ Default to "currency" when there is no ?mode=
+  const urlMode = (searchParams?.get("mode") || "currency").toLowerCase();
   const [mode, setMode] = useState<"bank" | "currency" | "all">(
     urlMode === "bank" || urlMode === "all" ? (urlMode as any) : "currency"
   );
@@ -109,18 +111,20 @@ export default function CashPage() {
   const [query, setQuery] = useState("");
   const [minCut, setMinCut] = useState(1000);
 
+  // Keep respecting explicit ?mode= if present
   useEffect(() => {
     if (urlMode === "bank" || urlMode === "currency" || urlMode === "all") {
       setMode(urlMode as any);
     }
   }, [urlMode]);
 
+  const [data, setData] = useState<CashApi | null>(null);
+
   useEffect(() => {
     if (!currClient) return;
     (async () => {
-      // cash-only scope
-      const { data } = await axios.get<CashApi>("/api/clients/assets/cash", {
-        params: { client_id: currClient, scope: "cash" },
+      const { data } = await axios.get<CashApi>("/api/clients/assets/custodian", {
+        params: { client_id: currClient },
       });
       setData(data);
     })();
@@ -152,7 +156,7 @@ export default function CashPage() {
           labels: lbl,
           datasets: [
             {
-              label: "Cash",
+              label: "Exposure",
               data: vals,
               backgroundColor: data.cash.by_bank.colors,
               borderRadius: 8,
@@ -171,7 +175,7 @@ export default function CashPage() {
           labels: lbl,
           datasets: [
             {
-              label: "Cash",
+              label: "Exposure",
               data: vals,
               backgroundColor: data.cash.by_currency.colors,
               borderRadius: 8,
@@ -244,12 +248,12 @@ export default function CashPage() {
     <Card>
       <CardHeader className="flex items-start justify-between gap-4">
         <div>
-          <CardTitle>Cash Distribution</CardTitle>
+          <CardTitle>Custodian Distribution</CardTitle>
           <CardDescription>By custodian and account</CardDescription>
         </div>
         <Tabs value={mode} onValueChange={(v) => setMode(v as any)}>
           <TabsList>
-            <TabsTrigger value="bank">Bank</TabsTrigger>
+            <TabsTrigger value="bank">Custodian</TabsTrigger>
             <TabsTrigger value="currency">Currency</TabsTrigger>
             <TabsTrigger value="all">All</TabsTrigger>
           </TabsList>
@@ -260,7 +264,7 @@ export default function CashPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
             <div className="rounded-xl border bg-slate-50 p-4">
-              <div className="text-sm text-muted-foreground">Net Cash Value in USD</div>
+              <div className="text-sm text-muted-foreground">Net Portfolio Exposure in USD</div>
               <div className="mt-1 text-2xl font-semibold">{fmtCurrency(total, 2)}</div>
             </div>
 
@@ -283,7 +287,7 @@ export default function CashPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input className="h-8 w-44 rounded border px-2 text-sm" placeholder="Find account or bank…" onChange={(e) => setQuery(e.target.value)}/>                  
+                  <input className="h-8 w-44 rounded border px-2 text-sm" placeholder="Find account or bank…" onChange={(e) => setQuery(e.target.value)}/>
                 </div>
               </div>
 
@@ -298,7 +302,7 @@ export default function CashPage() {
                   if (mode === "bank" || mode === "all") {
                     const banks = groupByBank(base, accountCurrencyMap, minCut);
                     if (!banks.length)
-                      return <div className="text-sm text-muted-foreground">No cash accounts found for the selected period.</div>;
+                      return <div className="text-sm text-muted-foreground">No accounts found for the selected period.</div>;
 
                     const totalPos = banks.reduce((a, b) => a + (b.total > 0 ? b.total : 0), 0);
 
@@ -359,7 +363,7 @@ export default function CashPage() {
                   // Currency mode – flat list with chips
                   const totalPos = base.reduce((a, r) => a + (r.amount > 0 ? r.amount : 0), 0);
                   if (!base.length)
-                    return <div className="text-sm text-muted-foreground">No cash accounts found for the selected period.</div>;
+                    return <div className="text-sm text-muted-foreground">No accounts found for the selected period.</div>;
 
                   return base
                     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))

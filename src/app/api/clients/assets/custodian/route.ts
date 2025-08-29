@@ -1,5 +1,4 @@
-// src/app/api/clients/assets/cash/route.ts
-// curl -s 'http://localhost:3001/api/clients/assets/cash?client_id=44&year=2025&month=7'
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=44&year=2025&month=7' 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { intOrUndef, r2, rowsOf, palette } from "@/lib/format";
@@ -13,6 +12,7 @@ type BankBlock = {
   as_of_date?: string | null;
 } & Record<string, any>;
 
+/* ---------------- months / overview payload ---------------- */
 async function getRecentMonths(clientId: number, limit = 12) {
   const pool = getPool();
   const q = await pool.query<{ y: number; m: number }>(
@@ -44,6 +44,7 @@ async function fetchMonthTableData(clientId: number, y: number, m: number) {
   return q.rows?.[0]?.data ?? { tableData: [] };
 }
 
+/* ---------------- route ---------------- */
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
@@ -52,37 +53,16 @@ export async function GET(req: NextRequest) {
     let month = intOrUndef(sp.get("month"));
     const month_date = sp.get("month_date") || undefined;
 
-    // NEW: scope determines which buckets we aggregate
-    //  - "cash" (default): ONLY cash equivalents
-    //  - anything else:     you can fall back to portfolio exposure (not used by this route now)
-    const scope = (sp.get("scope") || "cash").toLowerCase();
-    const KEYS =
-      scope === "cash"
-        ? (["cash_equivalents"] as const)
-        : ([
-            "cash_equivalents",
-            "direct_fixed_income",
-            "fixed_income_funds",
-            "direct_equities",
-            "equities_fund",
-            "alternative_fund",
-            "structured_product",
-            "loans",
-          ] as const);
-
     if (!clientId) {
       return NextResponse.json({ status: "error", message: "client_id is required" }, { status: 400 });
     }
 
     if (month_date && (!year || !month)) {
       const d = new Date(month_date);
-      if (!isNaN(+d)) {
-        year = d.getUTCFullYear();
-        month = d.getUTCMonth() + 1;
-      }
+      if (!isNaN(+d)) { year = d.getUTCFullYear(); month = d.getUTCMonth() + 1; }
     }
 
-    const months = !year || !month ? await getRecentMonths(clientId, 12) : [{ y: year!, m: month! }];
+    const months = (!year || !month) ? await getRecentMonths(clientId, 12) : [{ y: year!, m: month! }];
     if (!months.length) {
       return NextResponse.json({
         status: "ok",
@@ -98,38 +78,31 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // pick the first non-empty month
+    // pick the first month that actually has tableData
     let sel = months[0];
     let monthly = await fetchMonthTableData(clientId, sel.y, sel.m);
     if (!Array.isArray(monthly?.tableData) || monthly.tableData.length === 0) {
       for (const cand of months) {
         const td = await fetchMonthTableData(clientId, cand.y, cand.m);
-        if (Array.isArray(td?.tableData) && td.tableData.length) {
-          sel = cand;
-          monthly = td;
-          break;
-        }
+        if (Array.isArray(td?.tableData) && td.tableData.length) { sel = cand; monthly = td; break; }
       }
     }
 
     const monthDateStr = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
     const blocks: BankBlock[] = Array.isArray(monthly?.tableData) ? monthly.tableData : [];
 
-    // —— aggregators (CASH ONLY when scope = "cash")
-    const ccyTotals = new Map<string, number>();             // currency -> USD amount (or native if no USD field)
-    const bankTotals = new Map<string, number>();            // bank     -> total cash
-    const matrix = new Map<string, Map<string, number>>();   // bank -> (ccy -> amount)
-    const accountTotals = new Map<string, number>();         // "bank|acct" -> total
-    const acctCurMap = new Map<string, Map<string, number>>(); // "bank|acct" -> (ccy -> amount)
+    // recompute everything from tableData (matches overview)
+    const ccyTotals = new Map<string, number>();                     // currency  -> amount
+    const bankTotals = new Map<string, number>();                     // bank      -> net amount
+    const matrix = new Map<string, Map<string, number>>();        // bank -> (ccy -> amount)
+    const accountTotals = new Map<string, number>();                  // "bank|acct" -> amount
+    const acctCurMap = new Map<string, Map<string, number>>();      // "bank|acct" -> (ccy -> amount)
 
     const sumCat = (cat: any) => {
       if (!cat) return 0;
-      // prefer USD if present, else fall back to native balance
+      if (typeof cat?.subtotalUsd === "number") return Number(cat.subtotalUsd) || 0;
       const rows = rowsOf(cat);
-      return rows.reduce(
-        (a, r) => a + (Number(r?.balance_usd ?? r?.balanceUsd ?? r?.balance ?? 0) || 0),
-        0
-      );
+      return rows.reduce((a, r) => a + (Number(r?.balanceUsd ?? r?.balance ?? 0) || 0), 0);
     };
 
     for (const b of blocks) {
@@ -137,17 +110,33 @@ export async function GET(req: NextRequest) {
       const acct = (b.account_number ?? "—").toString();
       const acctKey = `${bank}|${acct}`;
 
-      // bank totals
-      let bankSum = 0;
-      for (const key of KEYS) bankSum += sumCat((b as any)[key]);
-      bankTotals.set(bank, (bankTotals.get(bank) || 0) + bankSum);
+      // bank net (include loans — matches Net Assets / overview)
+      const net =
+        sumCat(b.loans) +
+        sumCat(b.equity_funds ?? b.equities_fund) +
+        sumCat(b.direct_equities) +
+        sumCat(b.alternative_funds ?? b.alternative_fund) +
+        sumCat(b.fixed_income_funds) +
+        sumCat(b.direct_fixed_income) +
+        sumCat(b.structured_products) +
+        sumCat(b.cash_and_equivalents);
 
-      // currency + account splits
-      for (const key of KEYS) {
+      bankTotals.set(bank, (bankTotals.get(bank) || 0) + net);
+
+      // currency + account splits — iterate every bucket’s rows
+      for (const key of [
+        "cash_equivalents",
+        "direct_fixed_income",
+        "fixed_income_funds",
+        "direct_equities",
+        "equities_fund",
+        "alternative_fund",
+        "structured_product",
+        "loans"
+      ]) {
         for (const r of rowsOf((b as any)[key])) {
-          const usd = Number(r?.balance_usd ?? r?.balanceUsd ?? r?.balance ?? 0) || 0;
+          const usd = Number(r?.balanceUsd ?? r?.balance ?? 0) || 0;
           if (!usd) continue;
-
           const ccy = (r?.ccy ?? r?.currency ?? "USD").toString();
 
           ccyTotals.set(ccy, (ccyTotals.get(ccy) || 0) + usd);
@@ -155,21 +144,18 @@ export async function GET(req: NextRequest) {
           if (!matrix.has(bank)) matrix.set(bank, new Map());
           matrix.get(bank)!.set(ccy, (matrix.get(bank)!.get(ccy) || 0) + usd);
 
-          if (acct !== "—") {
-            accountTotals.set(acctKey, (accountTotals.get(acctKey) || 0) + usd);
+          accountTotals.set(acctKey, (accountTotals.get(acctKey) || 0) + usd);
 
-            if (!acctCurMap.has(acctKey)) acctCurMap.set(acctKey, new Map());
-            const amap = acctCurMap.get(acctKey)!;
-            amap.set(ccy, (amap.get(ccy) || 0) + usd);
-          }
+          if (!acctCurMap.has(acctKey)) acctCurMap.set(acctKey, new Map());
+          const amap = acctCurMap.get(acctKey)!;
+          amap.set(ccy, (amap.get(ccy) || 0) + usd);
         }
       }
     }
 
-    // shape response (same as custodian route)
+    // shape response
     const bankLabels = Array.from(bankTotals.keys());
     const bankData = bankLabels.map((k) => r2(bankTotals.get(k) || 0));
-
     const ccyLabels = Array.from(ccyTotals.keys());
     const ccyData = ccyLabels.map((k) => r2(ccyTotals.get(k) || 0));
 
@@ -185,7 +171,7 @@ export async function GET(req: NextRequest) {
         const [bank, account] = key.split("|");
         return { bank, account, amount: r2(amount) };
       })
-      .filter((a) => a.account !== "—")
+      .filter(a => a.account !== "—")
       .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
 
     const byAccountCurrency = Array.from(acctCurMap.entries()).map(([key, m]) => {
@@ -196,12 +182,12 @@ export async function GET(req: NextRequest) {
       return { bank, account, items };
     });
 
-    const grand = r2(ccyData.reduce((a, b) => a + b, 0)); // total cash equivalent
+    const grand = r2(ccyData.reduce((a, b) => a + b, 0));
 
     return NextResponse.json({
       status: "ok",
       month_date: monthDateStr,
-      totals: { grand_total: grand }, // now equals "Cash & Equivalents" total
+      totals: { grand_total: grand }, // == Net Assets
       cash: {
         by_currency: {
           labels: ccyLabels,
@@ -221,7 +207,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e) {
-    console.error("[cash route] error:", e);
+    console.error("[custodian route] error:", e);
     return NextResponse.json({ status: "error", message: "failed to load" }, { status: 500 });
   }
 }
@@ -233,7 +219,6 @@ export async function POST(req: NextRequest) {
   if (body.year != null) qp.set("year", String(body.year));
   if (body.month != null) qp.set("month", String(body.month));
   if (body.month_date != null) qp.set("month_date", String(body.month_date));
-  if (body.scope != null) qp.set("scope", String(body.scope)); // pass-through
-  const url = req.nextUrl.origin + "/api/clients/assets/cash?" + qp.toString();
+  const url = req.nextUrl.origin + "/api/clients/assets/custodian?" + qp.toString();
   return GET(new NextRequest(url));
 }

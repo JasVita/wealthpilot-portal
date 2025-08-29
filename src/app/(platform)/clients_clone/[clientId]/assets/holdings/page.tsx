@@ -130,7 +130,7 @@ export default function HoldingsPage() {
         if (!alias) return;
         const block = bank[alias];
         const rows = Array.isArray(block) ? block : Array.isArray(block?.rows) ? block.rows : [];
-        rows.forEach((row: any) => acc[k].push({ bank: bank.bank, ...row }));
+        rows.forEach((row: any) => acc[k].push({ bank: bank.bank, account_number: bank.account_number ?? "—", ...row }));
       });
     });
     return acc;
@@ -271,9 +271,10 @@ export default function HoldingsPage() {
   // PDF helpers (unchanged)
   const tableForPdf = useCallback(
     (key: AssetKey) => {
-      const columns = ["Bank", "Name", "Ticker", "ISIN", "Currency", "Units", "Balance (USD)"];
+      const columns = ["Bank", "Account", "Name", "Ticker", "ISIN", "Currency", "Units", "Balance (USD)"];
       const body = (aggregatedTables[key] ?? []).map((r) => [
         (r as any).bank,
+        (r as any).account_number ?? "—",
         (r as any).name ?? "",
         (r as any).ticker ?? "—",
         (r as any).isin ?? "—",
@@ -588,6 +589,7 @@ export default function HoldingsPage() {
                 <TableHeader className="bg-background">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="min-w-[120px]">Bank</TableHead>
+                    <TableHead className="min-w-[160px]">Account</TableHead> 
                     <TableHead className="min-w-[240px]">Name</TableHead>
                     <TableHead className="min-w-[100px]">Ticker</TableHead>
                     <TableHead className="min-w-[160px]">ISIN</TableHead>
@@ -617,6 +619,7 @@ export default function HoldingsPage() {
                     return (
                       <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
                         <TableCell className="py-3">{r?.bank ?? "—"}</TableCell>
+                        <TableCell className="py-3">{r?.account_number ?? "—"}</TableCell> 
                         <TableCell className="py-3">{r?.name ?? "—"}</TableCell>
                         <TableCell className="py-3">{r?.ticker ?? "—"}</TableCell>
                         <TableCell className="py-3">{r?.isin ?? "—"}</TableCell>
