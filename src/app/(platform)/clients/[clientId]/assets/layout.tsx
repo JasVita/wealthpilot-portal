@@ -45,7 +45,7 @@ ChartJS.register(
   ChartDataLabels
 );
 
-export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
+export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => { });
 
 const TABS = [
   { slug: "holdings", label: "Holdings" },
@@ -392,7 +392,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     };
   }, [trend]);
 
-  const base = `/clients_clone/${clientId ?? ""}/assets`;
+  const base = `/clients/${clientId ?? ""}/assets`;
 
   const pieOptions = {
     responsive: true,
@@ -564,7 +564,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           <Tabs
             value={(pathname?.split("/").at(-1) as string) ?? "holdings"}
             onValueChange={(sub) => {
-              const base = `/clients_clone/${clientId ?? ""}/assets`;
+              const base = `/clients/${clientId ?? ""}/assets`;
               router.push(`${base}/${sub}`);
             }}
             className="w-full"

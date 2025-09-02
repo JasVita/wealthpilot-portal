@@ -42,42 +42,43 @@ const data = {
     },
     {
       title: "Clients",
-      url: "/",
+      // url: "/",
+      url: "/clients",
       icon: Users,
-      items: [
-        {
-          title: "Overview",
-          url: "/clients/overview",
-        },
-        {
-          title: "Insights and Trends",
-          url: "/clients/insights-trends",
-        },
-        {
-          title: "Transaction History",
-          url: "/clients/transaction-history",
-        },
-        {
-          title: "Structured Products",
-          url: "/clients/sp",
-        },
-        {
-          title: "CRM",
-          url: "/clients/crm",
-        },
-        {
-          title: "Documents",
-          url: "/clients/documents",
-        },
-        {
-          title: "Fee & Billing",
-          url: "/clients/fee-bill",
-        },
-        {
-          title: "Settings",
-          url: "/clients/settings",
-        },
-      ],
+      // items: [
+      //   {
+      //     title: "Overview",
+      //     url: "/clients/overview",
+      //   },
+      //   {
+      //     title: "Insights and Trends",
+      //     url: "/clients/insights-trends",
+      //   },
+      //   {
+      //     title: "Transaction History",
+      //     url: "/clients/transaction-history",
+      //   },
+      //   {
+      //     title: "Structured Products",
+      //     url: "/clients/sp",
+      //   },
+      //   {
+      //     title: "CRM",
+      //     url: "/clients/crm",
+      //   },
+      //   {
+      //     title: "Documents",
+      //     url: "/clients/documents",
+      //   },
+      //   {
+      //     title: "Fee & Billing",
+      //     url: "/clients/fee-bill",
+      //   },
+      //   {
+      //     title: "Settings",
+      //     url: "/clients/settings",
+      //   },
+      // ],
     },
     {
       title: "Insights",

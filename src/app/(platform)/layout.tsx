@@ -47,15 +47,15 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
   /* ──────────────────────────────────────────────────────────────
    * Route change when user picks a different client
-   *  - If already under /clients_clone/[id]/..., replace the [id] segment
-   *  - Else navigate to /clients_clone/<id>/assets/holdings
+   *  - If already under /clients/[id]/..., replace the [id] segment
+   *  - Else navigate to /clients/<id>/assets/holdings
    *  - Always keep store in sync
    * ────────────────────────────────────────────────────────────── */
   function handleClientChange(nextId: string) {
     setCurrClient(nextId);
 
-    if (pathname?.startsWith("/clients_clone/")) {
-      const parts = pathname.split("/"); // ["", "clients_clone", "<id>", ...]
+    if (pathname?.startsWith("/clients/")) {
+      const parts = pathname.split("/"); // ["", "clients", "<id>", ...]
       if (parts.length >= 3) {
         parts[2] = nextId; // swap the [clientId] segment
         router.push(parts.join("/"));
@@ -63,7 +63,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       }
     }
 
-    router.push(`/clients_clone/${nextId}/assets/holdings`);
+    router.push(`/clients/${nextId}/assets/holdings`);
   }
 
   /* ──────────────────────────────────────────────────────────────

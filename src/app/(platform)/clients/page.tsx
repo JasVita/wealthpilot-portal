@@ -25,7 +25,7 @@ export default function ClientListPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Ensure the store is populated even if the user lands directly on /clients_clone
+  // Ensure the store is populated even if the user lands directly on /clinets
   useEffect(() => {
     if (!order.length) {
       setLoading(true);
@@ -67,7 +67,7 @@ export default function ClientListPage() {
 
   const goToClient = (id: string) => {
     setCurrClient(id);
-    router.push(`/clients_clone/${id}/assets`);
+    router.push(`/clients/${id}/assets`);
   };
 
   if (loading) {

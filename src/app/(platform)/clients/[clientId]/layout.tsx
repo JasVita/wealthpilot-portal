@@ -24,7 +24,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
     { slug: "settings", label: "Client Settings" },
   ] as const;
 
-  const base = `/clients_clone/${clientId ?? ""}`;
+  const base = `/clients/${clientId ?? ""}`;
   const active = (segment ?? "assets") as (typeof tabs)[number]["slug"];
 
   return (

@@ -157,8 +157,8 @@ async function fetchDocById(_clientId: string, docId: string): Promise<Doc | nul
 
   if (!data?.info) return null;
 
-  const assetsRoot        = normalizeToTableRoot(data.assets);
-  const transactionsRoot  = normalizeToTableRoot(data.transactions);
+  const assetsRoot = normalizeToTableRoot(data.assets);
+  const transactionsRoot = normalizeToTableRoot(data.transactions);
 
   return {
     id: String(data.info.id),
@@ -276,7 +276,7 @@ export default function DocumentDetail(props: { params: Promise<{ clientId: stri
         if (!mounted) return;
         if (!d) {
           toast.error("Document not found");
-          router.replace(`/clients_clone/${clientId}/documents`);
+          router.replace(`/clients/${clientId}/documents`);
           return;
         }
         setDoc(d);
@@ -737,7 +737,7 @@ export default function DocumentDetail(props: { params: Promise<{ clientId: stri
     return (
       <div className="p-4">
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/clients_clone/${clientId}/documents`}>
+          <Link href={`/clients/${clientId}/documents`}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to Documents
           </Link>
         </Button>
@@ -752,7 +752,7 @@ export default function DocumentDetail(props: { params: Promise<{ clientId: stri
       {/* Top bar */}
       <div className="flex items-center justify-between shrink-0">
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/clients_clone/${clientId}/documents`}>
+          <Link href={`/clients/${clientId}/documents`}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back to Documents
           </Link>

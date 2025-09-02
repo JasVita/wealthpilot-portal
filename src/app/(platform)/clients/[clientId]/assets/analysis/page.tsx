@@ -293,7 +293,7 @@ export default function AnalysisPage() {
 
   /* ---- Only header of Currency Allocation should be clickable ---- */
   const goToCashCurrency = useCallback(() => {
-    router.push(`/clients_clone/${clientId}/assets/cash?mode=currency`);
+    router.push(`/clients/${clientId}/assets/cash?mode=currency`);
   }, [router, clientId]);
 
   /* ------------------------------ Render ------------------------------ */

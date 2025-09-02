@@ -99,7 +99,7 @@ export default function Page() {
         const { data: res } = await axios.get<{
           alerts: string;
           news: string;
-        }>(`${process.env.NEXT_PUBLIC_API_URL}/client/${clientId}/news-alerts`);
+        }>(`${process.env.NEXT_PUBLIC_API_URL}/client_clone/${clientId}/news-alerts`);
 
         /* ALERTS */
         const alertData = safeJSONParse<{ alerts?: any[] }>(res.alerts, {
