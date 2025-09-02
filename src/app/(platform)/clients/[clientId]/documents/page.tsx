@@ -328,7 +328,7 @@ export default function DocumentsPage() {
                     const label = displayName(d);
                     const asOf = d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—";
                     const uploaded = d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "—";
-                    const docHref = d.id ? `/clients_clone/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}` : undefined;
+                    const docHref = d.id ? `/clients/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}` : undefined;
 
                     return (
                       <TableRow key={(d.id ?? i).toString()}>
