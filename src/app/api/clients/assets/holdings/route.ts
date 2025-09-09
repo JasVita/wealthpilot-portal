@@ -1,5 +1,5 @@
 // curl -s 'http://localhost:3001/api/clients/assets/holdings?client_id=32'
-//  curl -s 'http://localhost:3001/api/clients/assets/holdings?client_id=32&year=2025&month=5'
+// curl -s 'http://localhost:3001/api/clients/assets/holdings?client_id=32&year=2025&month=5'
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
