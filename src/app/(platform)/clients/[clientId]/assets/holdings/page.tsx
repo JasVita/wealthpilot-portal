@@ -52,6 +52,17 @@ interface OverviewRow {
 const assetKeys = ["cash_and_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities", "equities_fund", "alternative_fund", "structured_products", "loans"] as const;
 type AssetKey = (typeof assetKeys)[number];
 
+const COL_W: Record< "bank" | "account_number" | "name" | "ticker" | "isin" | "currency" | "units" | "balance", string > = {
+  bank:           "w-[10%]",
+  account_number: "w-[16%]",
+  name:           "w-[30%]",
+  ticker:         "w-[8%]",
+  isin:           "w-[16%]",
+  currency:       "w-[6%]",
+  units:          "w-[6%]",
+  balance:        "w-[8%]",
+};
+
 const assetLabels: Record<AssetKey, string> = {
   cash_and_equivalents: "Cash & Equivalents",
   direct_fixed_income: "Direct Fixed Income",
@@ -91,13 +102,13 @@ const INFLIGHT_MONTHS = new Set<string>();
 
 /** map backend aliases -> canonical keys */
 const keyAliases: Record<AssetKey, string[]> = {
-  cash_and_equivalents: ["cashAndEquiv", "cash_and_equivalents", "cashAndEquivalents"],
+  cash_and_equivalents: ["cash_equivalents", "cash_equivalent"],
   direct_fixed_income: ["directFixedIncome", "direct_fixed_income"],
   fixed_income_funds: ["fixedIncomeFunds", "fixed_income_funds"],
   direct_equities: ["directEquities", "direct_equities"],
   equities_fund: ["equityFunds", "equities_fund", "equity_funds"],
   alternative_fund: ["alternativeFunds", "alternative_fund", "alternative_funds"],
-  structured_products: ["structuredProducts", "structured_products"],
+  structured_products: ["structured_product"],
   loans: ["loans"],
 };
 
@@ -585,17 +596,17 @@ export default function HoldingsPage() {
         <div className="px-4">
           {selectedRows.length ? (
             <div className="rounded-md border overflow-hidden">
-              <Table className="text-sm">
+              <Table className="text-sm table-fixed w-full">
                 <TableHeader className="bg-background">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="min-w-[120px]">Bank</TableHead>
-                    <TableHead className="min-w-[160px]">Account</TableHead> 
-                    <TableHead className="min-w-[240px]">Name</TableHead>
-                    <TableHead className="min-w-[100px]">Ticker</TableHead>
-                    <TableHead className="min-w-[160px]">ISIN</TableHead>
-                    <TableHead className="min-w-[100px]">Currency</TableHead>
-                    <TableHead className="min-w-[100px]">Units</TableHead>
-                    <TableHead className="min-w-[160px] text-right">Balance</TableHead>
+                    <TableHead className={`${COL_W.bank} truncate`}>Bank</TableHead>
+                    <TableHead className={`${COL_W.account_number} truncate`}>Account</TableHead>
+                    <TableHead className={`${COL_W.name} truncate`}>Name</TableHead>
+                    <TableHead className={`${COL_W.ticker} truncate`}>Ticker</TableHead>
+                    <TableHead className={`${COL_W.isin} truncate`}>ISIN</TableHead>
+                    <TableHead className={`${COL_W.currency} truncate`}>Currency</TableHead>
+                    <TableHead className={`${COL_W.units} truncate`}>Units</TableHead>
+                    <TableHead className={`${COL_W.balance} truncate text-right`}>Balance</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -603,7 +614,7 @@ export default function HoldingsPage() {
                     const units =
                       typeof r?.units === "number"
                         ? r.units.toLocaleString("en-US", { maximumFractionDigits: 4 })
-                        : (r?.units ?? "—");
+                        : r?.units ?? "—";
 
                     const balance =
                       typeof r?.balanceUsd === "number"
@@ -618,14 +629,30 @@ export default function HoldingsPage() {
 
                     return (
                       <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
-                        <TableCell className="py-3">{r?.bank ?? "—"}</TableCell>
-                        <TableCell className="py-3">{r?.account_number ?? "—"}</TableCell> 
-                        <TableCell className="py-3">{r?.name ?? "—"}</TableCell>
-                        <TableCell className="py-3">{r?.ticker ?? "—"}</TableCell>
-                        <TableCell className="py-3">{r?.isin ?? "—"}</TableCell>
-                        <TableCell className="py-3">{r?.currency ?? "—"}</TableCell>
-                        <TableCell className="py-3">{units}</TableCell>
-                        <TableCell className="py-3 text-right">{balance}</TableCell>
+                        <TableCell className={`${COL_W.bank} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.bank ?? "—"}>
+                          {r?.bank ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL_W.account_number} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.account_number ?? "—"}>
+                          {r?.account_number ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL_W.name} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.name ?? "—"}>
+                          {r?.name ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL_W.ticker} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.ticker ?? "—"}>
+                          {r?.ticker ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL_W.isin} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.isin ?? "—"}>
+                          {r?.isin ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL_W.currency} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.currency ?? "—"}>
+                          {r?.currency ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL_W.units} whitespace-nowrap overflow-hidden text-ellipsis`} title={String(units)}>
+                          {units}
+                        </TableCell>
+                        <TableCell className={`${COL_W.balance} whitespace-nowrap overflow-hidden text-ellipsis text-right tabular-nums`} title={balance}>
+                          {balance}
+                        </TableCell>
                       </TableRow>
                     );
                   })}

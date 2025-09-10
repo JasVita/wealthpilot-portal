@@ -80,6 +80,24 @@ const data = {
       //   },
       // ],
     },
+    // {
+    //   title: "Trades (Draft)",
+    //   url: "/trades",        // optional parent anchor
+    //   icon: BarChart3,
+    //   items: [
+    //     // ✔ no client id here; the entry page will redirect using currClient
+    //     { title: "Daily Transactions", url: "/trades/daily-transactions" },
+    //   ],
+    // },
+    {
+      title: "Trades (Draft)",
+      url: "/trades",           // optional; can be "#" or omitted if you don’t want parent clickable
+      icon: BarChart3,
+      items: [
+        { title: "Daily Transactions", url: "/trades/daily-transactions" },
+        { title: "Daily Holdings",     url: "/trades/daily-holdings" },
+      ],
+    },
     {
       title: "Insights",
       url: "/insights",
