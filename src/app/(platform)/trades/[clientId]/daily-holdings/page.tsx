@@ -7,9 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,9 +19,12 @@ import { cn } from "@/lib/utils";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 
+import { usePrePill } from "@/hooks/use-prepill";       // ⬅️ reusable pill hook
+import { PillTabs } from "@/components/pill-tabs";      // ⬅️ tiny pills UI with counts
+
 type HoldingRow = {
   id: number;
-  assetClass: string;         // ⬅️ NEW: backend sends `assetClass` (title-cased)
+  assetClass: string;
   bank: string;
   account: string;
   name: string;
@@ -36,19 +37,18 @@ type HoldingRow = {
   securityKey?: string | null;
 };
 
-// table widths
 const COL = {
-  assetClass:     "min-w-[160px] w-[160px]",
-  bank:     "min-w-[120px] w-[120px]",
-  account:  "min-w-[140px] w-[140px]",
-  security: "min-w-[420px] w-[420px]",
-  ticker:   "min-w-[90px]  w-[90px]",
-  isin:     "min-w-[160px] w-[160px]",
-  seckey:   "min-w-[140px] w-[140px]",
-  units:    "min-w-[110px] w-[110px] text-right",
-  price:    "min-w-[110px] w-[110px] text-right",
-  balance:  "min-w-[140px] w-[140px] text-right",
-  ccy:      "min-w-[70px]  w-[70px] text-right",
+  assetClass: "min-w-[160px] w-[160px]",
+  bank:       "min-w-[60px] w-[120px]",
+  account:    "min-w-[100px] w-[120px]",
+  security:   "min-w-[220px] w-[320px]",
+  ticker:     "min-w-[90px]  w-[90px]",
+  isin:       "min-w-[120px] w-[140px]",
+  seckey:     "min-w-[140px] w-[140px]",
+  units:      "min-w-[110px] w-[110px] text-right",
+  price:      "min-w-[110px] w-[110px] text-right",
+  balance:    "min-w-[140px] w-[140px] text-right",
+  ccy:        "min-w-[70px]  w-[70px] text-right",
 } as const;
 
 function setParam(router: any, sp: URLSearchParams, key: string, val?: string | null) {
@@ -57,7 +57,6 @@ function setParam(router: any, sp: URLSearchParams, key: string, val?: string | 
   else next.set(key, val);
   router.replace(`?${next.toString()}`);
 }
-
 const sameDay = (a?: Date, b?: Date) =>
   !!a && !!b &&
   a.getFullYear() === b.getFullYear() &&
@@ -68,13 +67,13 @@ export default function DailyHoldingsPage() {
   const search = useSearchParams();
   const router = useRouter();
 
-  // hydrate date/range from URL
+  // hydrate date/range from URL (date, or date_from/date_to)
   const initialRange: DateRange | undefined = (() => {
     const df = search.get("date_from");
     const dt = search.get("date_to");
     if (df) {
       const from = new Date(df);
-      const to = dt ? new Date(dt) : undefined;
+      const to   = dt ? new Date(dt) : undefined;
       if (!Number.isNaN(+from) && (!dt || !Number.isNaN(+to!))) return { from, to };
     }
     const single = search.get("date");
@@ -89,7 +88,23 @@ export default function DailyHoldingsPage() {
   const [range, setRange] = useState<DateRange | undefined>(initialRange);
   const [selectedDate, setSelectedDate] = useState<Date>(initialRange?.from ?? new Date());
 
-  // single source of truth for URL + fetch
+  // pill value (asset class) persisted to URL
+  const initialPillFromUrl = search.get("pill") ?? "ALL";
+  const [pill, setPill] = useState<string>(initialPillFromUrl);
+
+  // other filters / search
+  const [q, setQ] = useState(search.get("q") ?? "");
+  const [banks, setBanks] = useState<string[]>(search.get("banks")?.split(",").filter(Boolean) ?? []);
+  const [accounts, setAccounts] = useState<string[]>(search.get("accts")?.split(",").filter(Boolean) ?? []);
+  const [ccy, setCcy] = useState<string | "ALL">((search.get("ccy") as any) || "ALL");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // data + loading
+  const [rows, setRows] = useState<HoldingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sel, setSel] = useState<HoldingRow | null>(null);
+
+  // === Single source for URL + fetch logic
   const fetchKey = useMemo(() => {
     if (range?.from && range?.to && !sameDay(range.from, range.to)) {
       return `R:${format(range.from, "yyyy-MM-dd")}→${format(range.to, "yyyy-MM-dd")}`;
@@ -98,7 +113,7 @@ export default function DailyHoldingsPage() {
     return `D:${format(d, "yyyy-MM-dd")}`;
   }, [range, selectedDate]);
 
-  // reflect into URL
+  // reflect fetchKey -> URL
   useEffect(() => {
     const sp = new URLSearchParams(search.toString());
     if (fetchKey.startsWith("R:")) {
@@ -114,22 +129,16 @@ export default function DailyHoldingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKey]);
 
-  // filters
-  const [q, setQ] = useState(search.get("q") ?? "");
-  const [banks, setBanks] = useState<string[]>(search.get("banks")?.split(",").filter(Boolean) ?? []);
-  const [accounts, setAccounts] = useState<string[]>(search.get("accts")?.split(",").filter(Boolean) ?? []);
-  const [ccy, setCcy] = useState<string | "ALL">((search.get("ccy") as any) || "ALL");
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const [rows, setRows] = useState<HoldingRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [sel, setSel] = useState<HoldingRow | null>(null);
-
-  // StrictMode de-dupe: remember last fetchKey we started
-  const lastFetchKeyRef = useRef<string>("");
-
+  // persist pill to URL
   useEffect(() => {
-    // de-dupe re-runs in React Strict Mode (dev)
+    const sp = new URLSearchParams(search.toString());
+    setParam(router, sp, "pill", pill === "ALL" ? null : pill);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pill]);
+
+  // fetch rows for date OR range (with backfill in single-day mode)
+  const lastFetchKeyRef = useRef<string>("");
+  useEffect(() => {
     if (lastFetchKeyRef.current === fetchKey) return;
     lastFetchKeyRef.current = fetchKey;
 
@@ -138,8 +147,6 @@ export default function DailyHoldingsPage() {
 
     async function run() {
       setLoading(true);
-
-      // assemble query once from fetchKey
       const qs: string[] = [];
       if (fetchKey.startsWith("R:")) {
         const [fromS, toS] = fetchKey.slice(2).split("→");
@@ -148,7 +155,6 @@ export default function DailyHoldingsPage() {
         qs.push(`date=${fetchKey.slice(2)}`);
       }
 
-      // fetch for chosen key
       const res = await fetch(`/api/trades/daily-holdings?${qs.join("&")}`, { cache: "no-store", signal: ctl.signal });
       const data = await res.json();
       if (!alive) return;
@@ -159,7 +165,6 @@ export default function DailyHoldingsPage() {
         return;
       }
 
-      // backfill only in single-day mode, not in ranges
       if (!fetchKey.startsWith("R:")) {
         let d = new Date(fetchKey.slice(2));
         for (let i = 0; i < 30; i++) {
@@ -169,12 +174,11 @@ export default function DailyHoldingsPage() {
           if (!alive) return;
           if (Array.isArray(data2?.rows) && data2.rows.length > 0) {
             setRows(data2.rows);
-            setSelectedDate(d); // move UI to nearest available day
+            setSelectedDate(d);
             break;
           }
         }
       }
-
       setLoading(false);
     }
 
@@ -182,21 +186,29 @@ export default function DailyHoldingsPage() {
     return () => { alive = false; ctl.abort(); };
   }, [fetchKey]);
 
+  // build the “pre-pill” pipeline:
+  //   - extra filters (bank/account/ccy)
+  //   - broader search (includes ticker/ccy/assetClass)
+  //   - counts per assetClass, pill list, final filtered rows
+  const { countsMap, pills, allCount, filtered } = usePrePill<HoldingRow>({
+    rows,
+    pillKey: (r) => r.assetClass,
+    activePill: pill,
+    setActivePill: setPill,
+    search: q,
+    searchFn: (r) =>
+      `${r.bank} ${r.account} ${r.name} ${r.ticker ?? ""} ${r.isin ?? ""} ${r.ccy ?? ""} ${r.assetClass ?? ""}`.toLowerCase(),
+    extraFilters: [
+      (r) => !banks.length || banks.includes(r.bank),
+      (r) => !accounts.length || accounts.includes(r.account),
+      (r) => ccy === "ALL" || r.ccy === ccy,
+    ],
+    pillSort: (a, b) => a.localeCompare(b),
+  });
+
+  // distinct lists (for dropdowns)
   const uniqBanks = useMemo(() => Array.from(new Set(rows.map(r => r.bank))).sort(), [rows]);
   const uniqAccounts = useMemo(() => Array.from(new Set(rows.map(r => r.account))).sort(), [rows]);
-
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (banks.length && !banks.includes(r.bank)) return false;
-      if (accounts.length && !accounts.includes(r.account)) return false;
-      if (ccy !== "ALL" && r.ccy !== ccy) return false;
-      if (q) {
-        const hay = `${r.bank} ${r.account} ${r.name} ${r.ticker ?? ""} ${r.isin ?? ""}`.toLowerCase();
-        if (!hay.includes(q.toLowerCase())) return false;
-      }
-      return true;
-    });
-  }, [rows, banks, accounts, q, ccy]);
 
   return (
     <div className="p-4 md:p-6 space-y-3">
@@ -222,7 +234,7 @@ export default function DailyHoldingsPage() {
                   selected={range}
                   onSelect={(r) => {
                     setRange(r);
-                    if (r?.from && !r?.to) setSelectedDate(r.from); // single click behaves like single-day
+                    if (r?.from && !r?.to) setSelectedDate(r.from);
                   }}
                   initialFocus
                 />
@@ -232,22 +244,36 @@ export default function DailyHoldingsPage() {
 
           {/* Bank */}
           <MultiSelect label="Bank" options={uniqBanks} values={banks} onChange={setBanks} placeholder="All banks" />
-
           {/* Account */}
           <MultiSelect label="Account" options={uniqAccounts} values={accounts} onChange={setAccounts} placeholder="All accounts" />
         </div>
 
-        {/* Search + Filters */}
+        {/* Search */}
         <div className="flex items-center gap-2">
-          <div className="relative w-[280px]">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search security, bank, account, ISIN…" className="pl-8" />
+          <div className="relative w-[380px]">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search security / bank / account / ISIN / Ticker / CCY / Asset class"
+              className="pl-8"
+            />
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
-          <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
+          {/* <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
             <Filter className="mr-2 h-4 w-4" /> Filters
-          </Button>
+          </Button> */}
         </div>
       </div>
+
+      {/* Asset-class pills with counts */}
+      <PillTabs
+        value={pill}
+        onChange={setPill}
+        allCount={allCount}
+        pills={pills}
+        counts={countsMap}
+        className="mt-1"
+      />
 
       {/* Table */}
       <div className="rounded-xl border">
@@ -270,14 +296,19 @@ export default function DailyHoldingsPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">Loading…</TableCell>
+                </TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">No results</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">No results</TableCell>
+                </TableRow>
               ) : (
                 filtered.map((r) => {
                   const unitsDisplay = r.units == null || r.units === 0 ? "—" : fmtNumber(r.units, 4, 0);
                   const hideBalance = r.units != null && r.units !== 0;
                   const balanceDisplay = hideBalance ? "—" : (r.balance != null ? money(r.balance) : "—");
+
                   return (
                     <TableRow key={r.id} className="cursor-pointer border-t hover:bg-muted/40">
                       <TableCell className={`${COL.assetClass} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.assetClass ?? "—"}>
@@ -289,8 +320,19 @@ export default function DailyHoldingsPage() {
                       <TableCell className={`${COL.account} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.account}>
                         {r.account}
                       </TableCell>
-                      <TableCell className={`${COL.security} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.name}>
-                        {r.name}
+                      <TableCell className={`${COL.security} whitespace-nowrap overflow-hidden px-3 py-2`}>
+                        <div
+                          className="whitespace-normal break-words text-xs md:text-[13px] leading-snug"
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                          title={r.name}
+                        >
+                          {r.name}
+                        </div>
                       </TableCell>
                       <TableCell className={`${COL.ticker} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.ticker ?? "—"}>
                         {r.ticker ?? "—"}
@@ -316,7 +358,7 @@ export default function DailyHoldingsPage() {
         </div>
       </div>
 
-      {/* Filters drawer */}
+      {/* Filters drawer (kept for future) */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" className="w-[360px] sm:w-[420px]">
           <SheetHeader>
@@ -332,6 +374,7 @@ export default function DailyHoldingsPage() {
   );
 }
 
+/* ------- helpers reused in this file ------- */
 function InfoRow({ k, v, className = "" }: { k: string; v: any; className?: string }) {
   return (
     <div className="flex items-center justify-between gap-6 px-1">
