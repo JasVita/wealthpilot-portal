@@ -5,24 +5,24 @@ import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Table, TableHeader, TableRow, TableHead, TableBody, TableCell,
-} from "@/components/ui/table";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 
 import { CalendarIcon, Check, ChevronsUpDown, Filter, Search, X } from "lucide-react";
 import { useClientStore } from "@/stores/clients-store";
 import { cn } from "@/lib/utils";
+
+import { usePrePill } from "@/hooks/use-prepill";
+import { PillTabs } from "@/components/pill-tabs";
 
 /* ---------- helpers ---------- */
 function setParam(router: any, sp: URLSearchParams, key: string, val?: string | null) {
@@ -31,30 +31,36 @@ function setParam(router: any, sp: URLSearchParams, key: string, val?: string | 
   else next.set(key, val);
   router.replace(`?${next.toString()}`);
 }
-const fmtDateOnly = (v?: string) => (v ? (new Date(v)).toISOString().slice(0, 10) : "");
+const sameDay = (a?: Date, b?: Date) =>
+  !!a && !!b &&
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
 
-/* ---------- Table widths (mirrors Daily Holdings look) ---------- */
+/* ---------- table widths ---------- */
 const COL = {
-  date:     "min-w-[120px] w-[120px]",
-  cat:      "min-w-[160px] w-[160px]",
-  acct:     "min-w-[160px] w-[160px]",
-  book:     "min-w-[220px] w-[220px]",
-  desc:     "min-w-[540px] w-[540px]",
-  amt:      "min-w-[160px] w-[160px] text-right",
-  ccy:      "min-w-[80px]  w-[80px]  text-right",
-  sign:     "min-w-[120px] w-[120px]",
+  date: "min-w-[100px] w-[100px]",
+  cat:  "min-w-[140px] w-[140px]",
+  acct: "min-w-[120px] w-[120px]",
+  book: "min-w-[120px] w-[150px]",
+  desc: "min-w-[340px] w-[440px]",
+  amt:  "min-w-[140px] w-[140px] text-right",
+  ccy:  "min-w-[60px]  w-[60px]  text-right",
+  sign: "min-w-[60px] w-[80px]",
+  file: "min-w-[220px] w-[260px]",
 } as const;
 
-/* ---------- API types (from /api/trades/daily-transactions) ---------- */
+/* ---------- API row ---------- */
 type ApiRow = {
-  category: string;       // e.g. "Dividend", "Wire Out"
-  bookingText: string;    // e.g. "cash & equivalents", "direct equities"
-  account: string;        // e.g. "530-312828"
-  valueDate: string;      // "YYYY-MM-DD"
-  description: string;    // long text
-  amount: number | null;  // number
-  ccy: string;            // "USD", "HKD", ...
+  category: string;
+  bookingText: string;
+  account: string;
+  valueDate: string;
+  description: string;
+  amount: number | null;
+  ccy: string;
   amountSign: "Inflow" | "Outflow";
+  fileName: string | null;
 };
 type ApiResp = {
   rows: ApiRow[];
@@ -74,36 +80,60 @@ export default function DailyTransactionsPage({
   const search = useSearchParams();
   const router = useRouter();
 
-  // Sync client in store (just to keep parity with the rest of the app)
+  // keep client in store aligned
   const { currClient, setCurrClient } = useClientStore();
   useEffect(() => {
     if (clientId && clientId !== currClient) setCurrClient(clientId);
   }, [clientId, currClient, setCurrClient]);
 
-  /* ---------- Date (calendar) ---------- */
-  const initialDateFromUrl = search.get("date");
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    if (initialDateFromUrl) {
-      const d = new Date(initialDateFromUrl);
-      if (!Number.isNaN(+d)) return d;
+  /* ---------- Date (range) ---------- */
+  const initialRange: DateRange | undefined = (() => {
+    const df = search.get("date_from");
+    const dt = search.get("date_to");
+    if (df) {
+      const from = new Date(df);
+      const to = dt ? new Date(dt) : undefined;
+      if (!Number.isNaN(+from) && (!dt || !Number.isNaN(+to!))) return { from, to };
     }
-    return new Date();
-  });
-  const ymd = format(selectedDate, "yyyy-MM-dd");
+    const single = search.get("date");
+    if (single) {
+      const d = new Date(single);
+      if (!Number.isNaN(+d)) return { from: d, to: undefined };
+    }
+    const today = new Date();
+    return { from: today, to: undefined };
+  })();
 
-  // Persist ?date=
+  const [range, setRange] = useState<DateRange | undefined>(initialRange);
+  const [selectedDate, setSelectedDate] = useState<Date>(initialRange?.from ?? new Date());
+
+  const dateKey = useMemo(() => {
+    if (range?.from && range?.to && !sameDay(range.from, range.to)) {
+      return `R:${format(range.from, "yyyy-MM-dd")}→${format(range.to, "yyyy-MM-dd")}`;
+    }
+    const d = range?.from ?? selectedDate;
+    return `D:${format(d, "yyyy-MM-dd")}`;
+  }, [range, selectedDate]);
+
   useEffect(() => {
     const sp = new URLSearchParams(search.toString());
-    setParam(router, sp, "date", ymd);
+    if (dateKey.startsWith("R:")) {
+      const [fromS, toS] = dateKey.slice(2).split("→");
+      setParam(router, sp, "date_from", fromS);
+      setParam(router, sp, "date_to", toS);
+      sp.delete("date");
+    } else {
+      const d = dateKey.slice(2);
+      setParam(router, sp, "date", d);
+      sp.delete("date_from"); sp.delete("date_to");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ymd]);
+  }, [dateKey]);
 
   /* ---------- Paging ---------- */
   const initialPageFromUrl = Math.max(1, Number(search.get("page") ?? 1));
   const [page, setPage] = useState<number>(initialPageFromUrl);
-  const [pageSize, setPageSize] = useState<number>(20);
-
-  // Persist ?page=
+  const [pageSize] = useState<number>(20);
   useEffect(() => {
     const sp = new URLSearchParams(search.toString());
     setParam(router, sp, "page", String(page));
@@ -115,11 +145,10 @@ export default function DailyTransactionsPage({
   const [accounts, setAccounts] = useState<string[]>(search.get("accts")?.split(",").filter(Boolean) ?? []);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // dynamic categories from API
-  const [categories, setCategories] = useState<string[]>([]);
+  // pills = categories
   const [pill, setPill] = useState<string>(search.get("pill") ?? "ALL");
 
-  // Persist simple filters to URL (so reloads/bookmarks work)
+  // persist pill + search + accounts
   useEffect(() => {
     const sp = new URLSearchParams(search.toString());
     setParam(router, sp, "pill", pill === "ALL" ? null : pill);
@@ -133,87 +162,77 @@ export default function DailyTransactionsPage({
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<{ total: number; totalPages: number }>({ total: 0, totalPages: 1 });
 
-  // Load from real API
   useEffect(() => {
     let alive = true;
     setLoading(true);
 
-    const sp: string[] = [];
-    // API handles month-to-date from ?date= (or current month if omitted)
-    if (ymd) sp.push(`date=${encodeURIComponent(ymd)}`);
-    if (page) sp.push(`page=${page}`);
-    if (pageSize) sp.push(`page_size=${pageSize}`);
+    const qp: string[] = [];
+    if (dateKey.startsWith("R:")) {
+      const [fromS, toS] = dateKey.slice(2).split("→");
+      qp.push(`date_from=${encodeURIComponent(fromS)}`, `date_to=${encodeURIComponent(toS)}`);
+    } else {
+      const d = dateKey.slice(2);
+      qp.push(`date=${encodeURIComponent(d)}`);
+    }
+    qp.push(`page=${page}`, `page_size=${pageSize}`);
 
-    fetch(`/api/trades/daily-transactions${sp.length ? `?${sp.join("&")}` : ""}`, { cache: "no-store" })
+    fetch(`/api/trades/daily-transactions?${qp.join("&")}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: ApiResp) => {
         if (!alive) return;
         setRows(data?.rows ?? []);
-        setCategories(data?.categories ?? []);
         setMeta({ total: data?.total ?? 0, totalPages: data?.totalPages ?? 1 });
-
-        // if pill not in categories anymore, reset to ALL
-        if (pill !== "ALL" && !(data?.categories ?? []).includes(pill)) setPill("ALL");
       })
       .finally(() => alive && setLoading(false));
 
     return () => { alive = false; };
-  }, [ymd, page, pageSize, pill]); // pill doesn't change the API result but we want to refilter; keeping as dep is safe
+  }, [dateKey, page, pageSize]);
 
-  // Account options from loaded page (or compute across rows in the page)
   const uniqAccounts = useMemo(() => Array.from(new Set(rows.map((r) => r.account))).sort(), [rows]);
 
-  // FE filtering (category pill, accounts, search)
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (pill !== "ALL" && r.category !== pill) return false;
-      if (accounts.length && !accounts.includes(r.account)) return false;
-
-      if (q) {
-        const hay = `${r.category} ${r.bookingText} ${r.account} ${r.description}`.toLowerCase();
-        if (!hay.includes(q.toLowerCase())) return false;
-      }
-      return true;
-    });
-  }, [rows, pill, accounts, q]);
-
-  // Currency chips (sum signed amount by ccy)
-  const ccyTotals = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of filtered) {
-      const signed = (r.amount ?? 0) * (r.amountSign === "Inflow" ? 1 : -1);
-      m.set(r.ccy, (m.get(r.ccy) ?? 0) + signed);
-    }
-    return Array.from(m.entries())
-      .map(([ccy, v]) => ({ ccy, v }))
-      .filter((x) => x.v !== 0);
-  }, [filtered]);
+  /* ---------- Pills + counts via usePrePill ---------- */
+  const { countsMap, pills, allCount, filtered } = usePrePill<ApiRow>({
+    rows,
+    pillKey: (r) => r.category,
+    activePill: pill,
+    setActivePill: (p) => { setPill(p); setPage(1); },
+    search: q,
+    searchFn: (r) =>
+      `${r.description} ${r.account} ${r.bookingText} ${r.category} ${r.ccy} ${r.amountSign} ${r.fileName ?? ""}`
+        .toLowerCase(),
+    extraFilters: [
+      (r) => !accounts.length || accounts.includes(r.account),
+    ],
+    pillSort: (a, b) => a.localeCompare(b),
+  });
 
   /* -------------------------------- UI -------------------------------- */
   return (
     <div className="p-4 md:p-6 space-y-3">
-      {/* Toolbar — left: Date + Account + Category Pills | right: Search + Filters */}
+      {/* Toolbar — left: Date(range) + Account + Pills | right: Search */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        {/* LEFT */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Date */}
+          {/* Date (range) */}
           <div className="flex items-center gap-2">
             <Label className="text-xs text-muted-foreground">Date</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn("h-9 w-[180px] justify-start text-left font-normal")}
-                >
+                <Button variant="outline" className={cn("h-9 w-[260px] justify-start text-left font-normal")}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {format(selectedDate, "yyyy-MM-dd")}
+                  {dateKey.startsWith("R:")
+                    ? dateKey.slice(2).replace("→", " → ")
+                    : dateKey.slice(2)}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(d) => d && (setSelectedDate(d), setPage(1))}
+                  mode="range"
+                  selected={range}
+                  onSelect={(r: DateRange | undefined) => {
+                    setRange(r);
+                    setPage(1);
+                    if (r?.from && !r?.to) setSelectedDate(r.from);
+                  }}
                   initialFocus
                 />
               </PopoverContent>
@@ -229,61 +248,35 @@ export default function DailyTransactionsPage({
             placeholder="All accounts"
           />
 
-          {/* Category pills (dynamic from API) */}
-          <Tabs value={pill} onValueChange={(v) => { setPill(v); setPage(1); }}>
-            <TabsList className="h-8">
-              <TabsTrigger value="ALL" className="text-xs">ALL</TabsTrigger>
-              {categories.map((c) => (
-                <TabsTrigger key={c} value={c} className="text-xs">
-                  {c}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          {/* Category pills (with counts) */}
+          <PillTabs
+            value={pill}
+            onChange={(v) => { setPill(v); setPage(1); }}
+            allCount={allCount}
+            pills={pills}
+            counts={countsMap}
+          />
         </div>
 
-        {/* RIGHT */}
+        {/* RIGHT — Search */}
         <div className="flex items-center gap-2">
-          <div className="relative w-[300px]">
+          <div className="relative w-[530px]">
             <Input
               value={q}
               onChange={(e) => { setQ(e.target.value); setPage(1); }}
-              placeholder="Search description / account / booking text…"
+              placeholder="Search description / account / booking text / category / CCY / sign / filename"
               className="pl-8"
             />
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
-          <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
+          {/* <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
             <Filter className="mr-2 h-4 w-4" />
             Filters
-          </Button>
+          </Button> */}
         </div>
       </div>
 
-      {/* Currency chips */}
-      <div className="flex flex-wrap gap-2">
-        {ccyTotals.length === 0 ? (
-          <Badge variant="secondary">No currency impact</Badge>
-        ) : (
-          ccyTotals.map((c) => (
-            <Card key={c.ccy} className="h-9">
-              <CardContent className="h-full w-full px-3 py-0">
-                <div className="h-full w-full flex items-center justify-center gap-2 leading-none">
-                  <span className="text-[11px] font-semibold tracking-wide">{c.ccy}</span>
-                  <span className={cn("inline-flex items-center leading-none", c.v >= 0 ? "text-emerald-600" : "text-red-600")}>
-                    {Math.abs(c.v).toLocaleString()}
-                    <span className="ml-1">{c.v >= 0 ? "▲" : "▼"}</span>
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Table — fields present in API */}
+      {/* Table */}
       <div className="rounded-xl border">
         <div className="overflow-auto">
           <Table className="text-sm table-fixed w-full">
@@ -294,22 +287,23 @@ export default function DailyTransactionsPage({
                 <TableHead className={`${COL.acct} truncate`}>Account</TableHead>
                 <TableHead className={`${COL.book} truncate`}>Booking Text</TableHead>
                 <TableHead className={`${COL.desc} truncate`}>Description</TableHead>
-                <TableHead className={`${COL.amt} truncate`}>Amount</TableHead>
-                <TableHead className={`${COL.ccy} truncate`}>CCY</TableHead>
+                <TableHead className={`${COL.amt}  truncate`}>Amount</TableHead>
+                <TableHead className={`${COL.ccy}  truncate`}>CCY</TableHead>
                 <TableHead className={`${COL.sign} truncate`}>Sign</TableHead>
+                <TableHead className={`${COL.file} truncate`}>File</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
                     No results
                   </TableCell>
                 </TableRow>
@@ -330,14 +324,44 @@ export default function DailyTransactionsPage({
                       <TableCell className={`${COL.book} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.bookingText}>
                         {r.bookingText}
                       </TableCell>
-                      <TableCell className={`${COL.desc} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.description}>
-                        {r.description}
+                      <TableCell className={`${COL.desc} px-3 py-2`}>
+                        <div
+                          className="whitespace-normal break-words text-[13px] text-muted-foreground leading-snug"
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                          title={r.description}
+                        >
+                          {r.description}
+                        </div>
                       </TableCell>
                       <TableCell className={`${COL.amt} tabular-nums px-3 py-2 ${signed >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                         {Math.abs(r.amount ?? 0).toLocaleString()}
                       </TableCell>
                       <TableCell className={`${COL.ccy} px-3 py-2`}>{r.ccy}</TableCell>
                       <TableCell className={`${COL.sign} px-3 py-2`}>{r.amountSign}</TableCell>
+                      
+                      {/* <TableCell className={`${COL.file} px-3 py-2`} title={r.fileName ?? "—"}>
+                        <div className="truncate">{r.fileName ?? "—"}</div>
+                      </TableCell>                       */}
+
+                      <TableCell className={`${COL.file} px-3 py-2`}>
+                        <div
+                          className="whitespace-normal break-words text-[13px] leading-snug"
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                          title={r.fileName ?? undefined}
+                        >
+                          {r.fileName ?? "—"}       
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -347,7 +371,7 @@ export default function DailyTransactionsPage({
         </div>
       </div>
 
-      {/* Pagination (simple) */}
+      {/* Pagination */}
       <div className="flex items-center justify-between pt-2">
         <div className="text-xs text-muted-foreground">
           Page {page} / {meta.totalPages} • {meta.total.toLocaleString()} row(s)
@@ -362,8 +386,8 @@ export default function DailyTransactionsPage({
         </div>
       </div>
 
-      {/* Filters drawer (kept for future extensibility) */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+      {/* Drawer saved for future server-backed filters */}
+      {/* <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" className="w-[360px] sm:w-[420px]">
           <SheetHeader>
             <SheetTitle>Filters</SheetTitle>
@@ -371,18 +395,15 @@ export default function DailyTransactionsPage({
           </SheetHeader>
 
           <div className="mt-4 space-y-4">
-            {/* You can add more server-backed filters later if your API supports them */}
-            <Button variant="secondary" onClick={() => setDrawerOpen(false)}>
-              Apply
-            </Button>
+            <Button variant="secondary" onClick={() => setDrawerOpen(false)}>Apply</Button>
           </div>
         </SheetContent>
-      </Sheet>
+      </Sheet> */}
     </div>
   );
 }
 
-/* ---------- small multi-select used for Account ---------- */
+/* ---------- simple multi-select ---------- */
 function MultiSelect({
   label,
   options,
@@ -397,12 +418,10 @@ function MultiSelect({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
-
   const toggle = (o: string) => {
     if (values.includes(o)) onChange(values.filter((v) => v !== o));
     else onChange([...values, o]);
   };
-
   return (
     <div className="flex items-center gap-2">
       <Label className="text-xs text-muted-foreground">{label}</Label>

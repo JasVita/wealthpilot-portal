@@ -32,6 +32,28 @@ export const fmtShortUSD = (v: unknown) => {
   return fmtCurrency(n, 0);
 };
 
+/** Format numbers with thousands separators; defaults to 0–2 decimals. */
+export const fmtNumber = (
+  v: unknown,
+  maxFractionDigits = 2,
+  minFractionDigits = 0
+): string => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: minFractionDigits,
+    maximumFractionDigits: maxFractionDigits,
+  });
+};
+
+/** Format Date | string to 'YYYY-MM-DD' (falls back gracefully if string is already ISO-ish). */
+export const fmtYMD = (v?: Date | string | null): string => {
+  if (!v) return "";
+  const d = typeof v === "string" ? new Date(v) : v;
+  if (!Number.isFinite(+d)) return String(v).slice(0, 10);
+  return d.toISOString().slice(0, 10);
+};
+
 /** Percentage helper — returns a raw number (not a string). */
 export const pct = (part: unknown, total: unknown) => {
   const p = toNum(total) === 0 ? 0 : (toNum(part) / toNum(total)) * 100;

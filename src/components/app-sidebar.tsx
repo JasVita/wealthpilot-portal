@@ -95,7 +95,7 @@ const data = {
       icon: BarChart3,
       items: [
         { title: "Daily Transactions", url: "/trades/daily-transactions" },
-        { title: "Daily Holdings",     url: "/trades/daily-holdings" },
+        { title: "Holding Changes",     url: "/trades/daily-holdings" },
       ],
     },
     {
