@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import { ClientOnly } from "@/components/ClientOnly"; 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
@@ -46,7 +47,7 @@ const COL = {
   isin:       "min-w-[120px] w-[140px]",
   seckey:     "min-w-[140px] w-[140px]",
   units:      "min-w-[110px] w-[110px] text-right",
-  price:      "min-w-[110px] w-[110px] text-right",
+  price:      "min-w-[120px] w-[120px] text-right",
   balance:    "min-w-[140px] w-[140px] text-right",
   ccy:        "min-w-[70px]  w-[70px] text-right",
 } as const;
@@ -211,176 +212,168 @@ export default function DailyHoldingsPage() {
   const uniqAccounts = useMemo(() => Array.from(new Set(rows.map(r => r.account))).sort(), [rows]);
 
   return (
-    <div className="p-4 md:p-6 space-y-3">
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
+    <ClientOnly>
+      <div className="p-4 md:p-6 space-y-3">
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
 
-          {/* Date (single or range) */}
+            {/* Date (single or range) */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground">Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("h-9 w-[260px] justify-start text-left font-normal")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {fetchKey.startsWith("R:")
+                      ? fetchKey.slice(2).replace("→", " → ")
+                      : fetchKey.slice(2)}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={range}
+                    onSelect={(r) => {
+                      setRange(r);
+                      if (r?.from && !r?.to) setSelectedDate(r.from);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Bank */}
+            <MultiSelect label="Bank" options={uniqBanks} values={banks} onChange={setBanks} placeholder="All banks" />
+            {/* Account */}
+            <MultiSelect label="Account" options={uniqAccounts} values={accounts} onChange={setAccounts} placeholder="All accounts" />
+          </div>
+
+          {/* Search */}
           <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("h-9 w-[260px] justify-start text-left font-normal")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {fetchKey.startsWith("R:")
-                    ? fetchKey.slice(2).replace("→", " → ")
-                    : fetchKey.slice(2)}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="range"
-                  selected={range}
-                  onSelect={(r) => {
-                    setRange(r);
-                    if (r?.from && !r?.to) setSelectedDate(r.from);
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <div className="relative w-[380px]">
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search security / bank / account / ISIN / Ticker / CCY / Asset class"
+                className="pl-8"
+              />
+              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
+            {/* <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
+              <Filter className="mr-2 h-4 w-4" /> Filters
+            </Button> */}
           </div>
-
-          {/* Bank */}
-          <MultiSelect label="Bank" options={uniqBanks} values={banks} onChange={setBanks} placeholder="All banks" />
-          {/* Account */}
-          <MultiSelect label="Account" options={uniqAccounts} values={accounts} onChange={setAccounts} placeholder="All accounts" />
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-2">
-          <div className="relative w-[380px]">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search security / bank / account / ISIN / Ticker / CCY / Asset class"
-              className="pl-8"
-            />
-            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          </div>
-          {/* <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
-            <Filter className="mr-2 h-4 w-4" /> Filters
-          </Button> */}
-        </div>
-      </div>
+        {/* Asset-class pills with counts */}
+        <PillTabs
+          value={pill}
+          onChange={setPill}
+          allCount={allCount}
+          pills={pills}
+          counts={countsMap}
+          className="mt-1"
+        />
 
-      {/* Asset-class pills with counts */}
-      <PillTabs
-        value={pill}
-        onChange={setPill}
-        allCount={allCount}
-        pills={pills}
-        counts={countsMap}
-        className="mt-1"
-      />
-
-      {/* Table */}
-      <div className="rounded-xl border">
-        <div className="overflow-auto">
-          <Table className="text-sm table-fixed w-full">
-            <TableHeader className="bg-background">
-              <TableRow className="hover:bg-transparent [&>th]:px-3 [&>th]:py-2 text-md text-muted-foreground">
-                <TableHead className={`${COL.assetClass} truncate`}>Asset Class</TableHead>
-                <TableHead className={`${COL.bank} truncate`}>Bank</TableHead>
-                <TableHead className={`${COL.account} truncate`}>Account</TableHead>
-                <TableHead className={`${COL.security} truncate`}>Security</TableHead>
-                <TableHead className={`${COL.ticker} truncate`}>Ticker</TableHead>
-                <TableHead className={`${COL.isin} truncate`}>ISIN</TableHead>
-                <TableHead className={`${COL.seckey} truncate`}>Sec. Key</TableHead>
-                <TableHead className={`${COL.units} truncate`}>Units</TableHead>
-                <TableHead className={`${COL.price} truncate`}>Price</TableHead>
-                <TableHead className={`${COL.balance} truncate`}>Balance</TableHead>
-                <TableHead className={`${COL.ccy} truncate`}>CCY</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">Loading…</TableCell>
+        {/* Table */}
+        <div className="rounded-xl border">
+          <div className="overflow-auto">
+            <Table className="text-sm table-fixed w-full">
+              <TableHeader className="bg-background">
+                <TableRow className="hover:bg-transparent [&>th]:px-3 [&>th]:py-2 text-md text-muted-foreground">
+                  <TableHead className={`${COL.assetClass} truncate`}>Asset Class</TableHead>
+                  <TableHead className={`${COL.bank} truncate`}>Bank</TableHead>
+                  <TableHead className={`${COL.account} truncate`}>Account</TableHead>
+                  <TableHead className={`${COL.security} truncate`}>Security</TableHead>
+                  <TableHead className={`${COL.ticker} truncate`}>Ticker</TableHead>
+                  <TableHead className={`${COL.isin} truncate`}>ISIN</TableHead>
+                  <TableHead className={`${COL.seckey} truncate`}>Sec. Key</TableHead>
+                  <TableHead className={`${COL.units} truncate`}>Units</TableHead>
+                  <TableHead className={`${COL.price} truncate`}>Weighted Price</TableHead>
+                  <TableHead className={`${COL.balance} truncate`}>Balance</TableHead>
+                  <TableHead className={`${COL.ccy} truncate`}>CCY</TableHead>
                 </TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">No results</TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((r) => {
-                  const unitsDisplay = r.units == null || r.units === 0 ? "—" : fmtNumber(r.units, 4, 0);
-                  const hideBalance = r.units != null && r.units !== 0;
-                  const balanceDisplay = hideBalance ? "—" : (r.balance != null ? money(r.balance) : "—");
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">Loading…</TableCell>
+                  </TableRow>
+                ) : filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="px-3 py-8 text-center text-muted-foreground">No results</TableCell>
+                  </TableRow>
+                ) : (
+                  filtered.map((r) => {
+                    const unitsDisplay = r.units == null || r.units === 0 ? "—" : fmtNumber(r.units, 4, 0);
+                    const hideBalance = r.units != null && r.units !== 0;
+                    const balanceDisplay = hideBalance ? "—" : (r.balance != null ? money(r.balance) : "—");
 
-                  return (
-                    <TableRow key={r.id} className="cursor-pointer border-t hover:bg-muted/40">
-                      <TableCell className={`${COL.assetClass} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.assetClass ?? "—"}>
-                        {r.assetClass ?? "—"}
-                      </TableCell>
-                      <TableCell className={`${COL.bank} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.bank}>
-                        {r.bank}
-                      </TableCell>
-                      <TableCell className={`${COL.account} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.account}>
-                        {r.account}
-                      </TableCell>
-                      <TableCell className={`${COL.security} whitespace-nowrap overflow-hidden px-3 py-2`}>
-                        <div
-                          className="whitespace-normal break-words text-xs md:text-[13px] leading-snug"
-                          style={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                          title={r.name}
-                        >
-                          {r.name}
-                        </div>
-                      </TableCell>
-                      <TableCell className={`${COL.ticker} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.ticker ?? "—"}>
-                        {r.ticker ?? "—"}
-                      </TableCell>
-                      <TableCell className={`${COL.isin} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.isin ?? "—"}>
-                        {r.isin ?? "—"}
-                      </TableCell>
-                      <TableCell className={`${COL.seckey} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.securityKey ?? "—"}>
-                        {r.securityKey ?? "—"}
-                      </TableCell>
-                      <TableCell className={`${COL.units} tabular-nums px-3 py-2`}>{unitsDisplay}</TableCell>
-                      <TableCell className={`${COL.price} tabular-nums px-3 py-2`}>{r.price != null ? fmtNumber(r.price, 4, 0) : "—"}</TableCell>
-                      <TableCell className={`${COL.balance} tabular-nums px-3 py-2 ${!hideBalance && (r.balance ?? 0) < 0 ? "text-red-600" : !hideBalance ? "text-emerald-600" : ""}`}>
-                        {balanceDisplay}
-                      </TableCell>
-                      <TableCell className={`${COL.ccy} px-3 py-2`}>{r.ccy}</TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {/* Filters drawer (kept for future) */}
-      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-[360px] sm:w-[420px]">
-          <SheetHeader>
-            <SheetTitle>Filters</SheetTitle>
-            <SheetDescription>Refine results</SheetDescription>
-          </SheetHeader>
-          <div className="mt-4 space-y-4">
-            <Button variant="secondary" onClick={() => setDrawerOpen(false)}>Apply</Button>
+                    return (
+                      <TableRow key={r.id} className="cursor-pointer border-t hover:bg-muted/40">
+                        <TableCell className={`${COL.assetClass} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.assetClass ?? "—"}>
+                          {r.assetClass ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL.bank} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.bank}>
+                          {r.bank}
+                        </TableCell>
+                        <TableCell className={`${COL.account} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.account}>
+                          {r.account}
+                        </TableCell>
+                        <TableCell className={`${COL.security} whitespace-nowrap overflow-hidden px-3 py-2`}>
+                          <div
+                            className="whitespace-normal break-words text-xs md:text-[13px] leading-snug"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                            title={r.name}
+                          >
+                            {r.name}
+                          </div>
+                        </TableCell>
+                        <TableCell className={`${COL.ticker} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.ticker ?? "—"}>
+                          {r.ticker ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL.isin} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.isin ?? "—"}>
+                          {r.isin ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL.seckey} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.securityKey ?? "—"}>
+                          {r.securityKey ?? "—"}
+                        </TableCell>
+                        <TableCell className={`${COL.units} tabular-nums px-3 py-2`}>{unitsDisplay}</TableCell>
+                        <TableCell className={`${COL.price} tabular-nums px-3 py-2`}>{r.price != null ? fmtNumber(r.price, 4, 0) : "—"}</TableCell>
+                        <TableCell className={`${COL.balance} tabular-nums px-3 py-2 ${!hideBalance && (r.balance ?? 0) < 0 ? "text-red-600" : !hideBalance ? "text-emerald-600" : ""}`}>
+                          {balanceDisplay}
+                        </TableCell>
+                        <TableCell className={`${COL.ccy} px-3 py-2`}>{r.ccy}</TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
           </div>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
-}
+        </div>
 
-/* ------- helpers reused in this file ------- */
-function InfoRow({ k, v, className = "" }: { k: string; v: any; className?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-6 px-1">
-      <span className="text-xs text-muted-foreground">{k}</span>
-      <span className={`font-medium ${className}`}>{String(v)}</span>
-    </div>
+        {/* Filters drawer (kept for future) */}
+        <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <SheetContent side="right" className="w-[360px] sm:w-[420px]">
+            <SheetHeader>
+              <SheetTitle>Filters</SheetTitle>
+              <SheetDescription>Refine results</SheetDescription>
+            </SheetHeader>
+            <div className="mt-4 space-y-4">
+              <Button variant="secondary" onClick={() => setDrawerOpen(false)}>Apply</Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </ClientOnly>
   );
 }
 

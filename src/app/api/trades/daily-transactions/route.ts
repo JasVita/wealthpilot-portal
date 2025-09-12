@@ -19,9 +19,14 @@ function titleCase(s: string | null | undefined) {
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const dateParam = url.searchParams.get("date");
+
+    const dateParam     = url.searchParams.get("date");
     const dateFromParam = url.searchParams.get("date_from");
-    const dateToParam = url.searchParams.get("date_to");
+    const dateToParam   = url.searchParams.get("date_to");
+
+    const qRaw   = (url.searchParams.get("q") ?? "").trim();
+    const acctsS = (url.searchParams.get("accts") ?? "").trim();
+    const accounts = acctsS ? acctsS.split(",").map(s => s.trim()).filter(Boolean) : [];
 
     // Paging
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
@@ -36,15 +41,18 @@ export async function GET(req: NextRequest) {
       dateFrom = dateFromParam;
       dateTo = dateToParam;
     } else if (dateParam === null) {
+      // default: current month → today
       const today = new Date();
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
       dateFrom = toYMD(start);
       dateTo = toYMD(today);
-    } else if (dateParam.trim() === "") {
+    } else if ((dateParam ?? "").trim() === "") {
+      // all history
       dateFrom = null;
       dateTo = null;
     } else {
-      const end = new Date(dateParam);
+      // month-to-date for the given day
+      const end = new Date(dateParam!);
       if (!Number.isNaN(+end)) {
         const start = new Date(end.getFullYear(), end.getMonth(), 1);
         dateFrom = toYMD(start);
@@ -54,9 +62,10 @@ export async function GET(req: NextRequest) {
 
     const pool = getPool();
 
-    // WHERE
+    // WHERE builder (shared)
     const where: string[] = [];
     const params: any[] = [];
+
     if (dateFrom && dateTo) {
       where.push(`value_date::date BETWEEN $${params.length + 1} AND $${params.length + 2}`);
       params.push(dateFrom, dateTo);
@@ -67,9 +76,37 @@ export async function GET(req: NextRequest) {
       where.push(`value_date::date <= $${params.length + 1}`);
       params.push(dateTo);
     }
+
+    // accounts filter
+    if (accounts.length) {
+      where.push(`account = ANY($${params.length + 1})`);
+      params.push(accounts);
+    }
+
+    // search filter (description / account / booking_text / category / CCY / file_name + "inflow/outflow")
+    if (qRaw) {
+      const like = `%${qRaw}%`;
+      const qLow = qRaw.toLowerCase();
+      const pLike = params.length + 1;
+      const pIn   = pLike + 1;
+      const pOut  = pLike + 2;
+
+      where.push(`(
+        booking_text ILIKE $${pLike} OR
+        description  ILIKE $${pLike} OR
+        account      ILIKE $${pLike} OR
+        transaction_type ILIKE $${pLike} OR
+        currency     ILIKE $${pLike} OR
+        file_name    ILIKE $${pLike} OR
+        ($${pIn}  = 'inflow'  AND amount_sign = 1) OR
+        ($${pOut} = 'outflow' AND amount_sign = -1)
+      )`);
+      params.push(like, qLow, qLow);
+    }
+
     const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-    // Count
+    // ----- Count (for pagination) over the filtered dataset
     const { rows: cntRows } = await pool.query(
       `SELECT COUNT(*) AS cnt FROM daily.statement_txn ${whereSQL}`,
       params
@@ -77,14 +114,22 @@ export async function GET(req: NextRequest) {
     const total = Number(cntRows?.[0]?.cnt ?? 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    // Categories (filtered)
-    const { rows: catRows } = await pool.query(
-      `SELECT DISTINCT transaction_type AS category FROM daily.statement_txn ${whereSQL} ORDER BY category`,
+    // ----- Pill counts by category (over the full filtered dataset)
+    const { rows: pillRows } = await pool.query(
+      `SELECT transaction_type AS category, COUNT(*)::bigint AS cnt
+       FROM daily.statement_txn
+       ${whereSQL}
+       GROUP BY 1
+       ORDER BY 1`,
       params
     );
-    const categories: string[] = catRows.map((r: any) => r.category);
+    const pillCounts: Record<string, number> =
+      Object.fromEntries(pillRows.map((r: any) => [r.category, Number(r.cnt)]));
 
-    // Data
+    // Optional: category list (sorted)
+    const categories = Object.keys(pillCounts).sort();
+
+    // ----- Data (paginated)
     const dataSql = `
       SELECT
         id,
@@ -107,19 +152,19 @@ export async function GET(req: NextRequest) {
     const { rows } = await pool.query(dataSql, dataParams);
 
     const mapped = (rows ?? []).map((r: any) => ({
-      category: r.transaction_type,
-      bookingText: titleCase(r.booking_text),  // Title-case here
-      account: r.account,
-      valueDate: r.value_date,                 // YYYY-MM-DD
+      category:    r.transaction_type,
+      bookingText: titleCase(r.booking_text),
+      account:     r.account,
+      valueDate:   r.value_date,                    // YYYY-MM-DD
       description: r.description,
-      amount: r.amount != null ? Number(r.amount) : null,
-      ccy: r.currency,
-      amountSign: Number(r.amount_sign) === 1 ? "Inflow" : "Outflow",
-      fileName: r.file_name ?? null,          // new
+      amount:      r.amount != null ? Number(r.amount) : null,
+      ccy:         r.currency,
+      amountSign:  Number(r.amount_sign) === 1 ? "Inflow" : "Outflow",
+      fileName:    r.file_name ?? null,
     }));
 
     return NextResponse.json(
-      { rows: mapped, categories, page, pageSize, total, totalPages },
+      { rows: mapped, categories, pillCounts, page, pageSize, total, totalPages },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {

@@ -13,16 +13,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Calendar } from "@/components/ui/calendar";
+import { PillTabs } from "@/components/pill-tabs";
+import { Pagination } from "@/components/pagination";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { CalendarIcon, Check, ChevronsUpDown, Search, X } from "lucide-react";
 
-import { CalendarIcon, Check, ChevronsUpDown, Filter, Search, X } from "lucide-react";
 import { useClientStore } from "@/stores/clients-store";
 import { cn } from "@/lib/utils";
 
-import { usePrePill } from "@/hooks/use-prepill";
-import { PillTabs } from "@/components/pill-tabs";
+
 
 /* ---------- helpers ---------- */
 function setParam(router: any, sp: URLSearchParams, key: string, val?: string | null) {
@@ -65,6 +65,7 @@ type ApiRow = {
 type ApiResp = {
   rows: ApiRow[];
   categories: string[];
+  pillCounts?: Record<string, number>;
   page: number;
   pageSize: number;
   total: number;
@@ -143,8 +144,6 @@ export default function DailyTransactionsPage({
   /* ---------- Filters ---------- */
   const [q, setQ] = useState<string>(search.get("q") ?? "");
   const [accounts, setAccounts] = useState<string[]>(search.get("accts")?.split(",").filter(Boolean) ?? []);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
   // pills = categories
   const [pill, setPill] = useState<string>(search.get("pill") ?? "ALL");
 
@@ -161,6 +160,8 @@ export default function DailyTransactionsPage({
   const [rows, setRows] = useState<ApiRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<{ total: number; totalPages: number }>({ total: 0, totalPages: 1 });
+  const [pillCounts, setPillCounts] = useState<Record<string, number>>({});
+  const [pillList, setPillList] = useState<string[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -175,6 +176,8 @@ export default function DailyTransactionsPage({
       qp.push(`date=${encodeURIComponent(d)}`);
     }
     qp.push(`page=${page}`, `page_size=${pageSize}`);
+    if (q) qp.push(`q=${encodeURIComponent(q)}`);
+    if (accounts.length) qp.push(`accts=${encodeURIComponent(accounts.join(","))}`);
 
     fetch(`/api/trades/daily-transactions?${qp.join("&")}`, { cache: "no-store" })
       .then((r) => r.json())
@@ -182,31 +185,40 @@ export default function DailyTransactionsPage({
         if (!alive) return;
         setRows(data?.rows ?? []);
         setMeta({ total: data?.total ?? 0, totalPages: data?.totalPages ?? 1 });
+
+        // use server-provided pill counts across full filtered dataset
+        const serverCounts = data?.pillCounts ?? {};
+        setPillCounts(serverCounts);
+        setPillList((data?.categories ?? Object.keys(serverCounts)).sort());
+
+        // if current pill vanished under new filters, snap to ALL
+        if (pill !== "ALL" && !Object.prototype.hasOwnProperty.call(serverCounts, pill)) {
+          setPill("ALL");
+        }
       })
       .finally(() => alive && setLoading(false));
 
     return () => { alive = false; };
-  }, [dateKey, page, pageSize]);
+  }, [dateKey, page, pageSize, q, accounts]); // re-fetch when these change
 
   const uniqAccounts = useMemo(() => Array.from(new Set(rows.map((r) => r.account))).sort(), [rows]);
 
-  /* ---------- Pills + counts via usePrePill ---------- */
-  const { countsMap, pills, allCount, filtered } = usePrePill<ApiRow>({
-    rows,
-    pillKey: (r) => r.category,
-    activePill: pill,
-    setActivePill: (p) => { setPill(p); setPage(1); },
-    search: q,
-    searchFn: (r) =>
-      `${r.description} ${r.account} ${r.bookingText} ${r.category} ${r.ccy} ${r.amountSign} ${r.fileName ?? ""}`
-        .toLowerCase(),
-    extraFilters: [
-      (r) => !accounts.length || accounts.includes(r.account),
-    ],
-    pillSort: (a, b) => a.localeCompare(b),
-  });
+  // FE composite filter only for the table rows (current page)
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      if (pill !== "ALL" && r.category !== pill) return false;
+      if (accounts.length && !accounts.includes(r.account)) return false;
+      if (q) {
+        const hay = `${r.description} ${r.account} ${r.bookingText} ${r.category} ${r.ccy} ${r.amountSign} ${r.fileName ?? ""}`.toLowerCase();
+        if (!hay.includes(q.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [rows, pill, accounts, q]);
 
   /* -------------------------------- UI -------------------------------- */
+  const pillCountsMap = useMemo(() => new Map<string, number>(Object.entries(pillCounts)), [pillCounts]);
+
   return (
     <div className="p-4 md:p-6 space-y-3">
       {/* Toolbar — left: Date(range) + Account + Pills | right: Search */}
@@ -248,13 +260,13 @@ export default function DailyTransactionsPage({
             placeholder="All accounts"
           />
 
-          {/* Category pills (with counts) */}
+          {/* Category pills with server counts */}
           <PillTabs
             value={pill}
             onChange={(v) => { setPill(v); setPage(1); }}
-            allCount={allCount}
-            pills={pills}
-            counts={countsMap}
+            allCount={meta.total}
+            pills={pillList}
+            counts={pillCountsMap}
           />
         </div>
 
@@ -269,10 +281,6 @@ export default function DailyTransactionsPage({
             />
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           </div>
-          {/* <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
-            <Filter className="mr-2 h-4 w-4" />
-            Filters
-          </Button> */}
         </div>
       </div>
 
@@ -343,11 +351,6 @@ export default function DailyTransactionsPage({
                       </TableCell>
                       <TableCell className={`${COL.ccy} px-3 py-2`}>{r.ccy}</TableCell>
                       <TableCell className={`${COL.sign} px-3 py-2`}>{r.amountSign}</TableCell>
-                      
-                      {/* <TableCell className={`${COL.file} px-3 py-2`} title={r.fileName ?? "—"}>
-                        <div className="truncate">{r.fileName ?? "—"}</div>
-                      </TableCell>                       */}
-
                       <TableCell className={`${COL.file} px-3 py-2`}>
                         <div
                           className="whitespace-normal break-words text-[13px] leading-snug"
@@ -357,9 +360,9 @@ export default function DailyTransactionsPage({
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden",
                           }}
-                          title={r.fileName ?? undefined}
+                          title={r.fileName ?? undefined}  // null-safe for TS
                         >
-                          {r.fileName ?? "—"}       
+                          {r.fileName ?? "—"}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -372,33 +375,7 @@ export default function DailyTransactionsPage({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between pt-2">
-        <div className="text-xs text-muted-foreground">
-          Page {page} / {meta.totalPages} • {meta.total.toLocaleString()} row(s)
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            Prev
-          </Button>
-          <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage((p) => p + 1)}>
-            Next
-          </Button>
-        </div>
-      </div>
-
-      {/* Drawer saved for future server-backed filters */}
-      {/* <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-[360px] sm:w-[420px]">
-          <SheetHeader>
-            <SheetTitle>Filters</SheetTitle>
-            <SheetDescription>Refine results</SheetDescription>
-          </SheetHeader>
-
-          <div className="mt-4 space-y-4">
-            <Button variant="secondary" onClick={() => setDrawerOpen(false)}>Apply</Button>
-          </div>
-        </SheetContent>
-      </Sheet> */}
+      <Pagination page={page} total={meta.total} pageSize={pageSize} totalPages={meta.totalPages} onChange={setPage}/>
     </div>
   );
 }
