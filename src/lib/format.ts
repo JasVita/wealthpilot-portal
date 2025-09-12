@@ -72,6 +72,15 @@ export const intOrUndef = (v: unknown): number | undefined => {
 /** Safely get rows[] from a bucket which might be array | {rows} | undefined */
 export const rowsOf = (cat: any): any[] => !cat ? [] : Array.isArray(cat) ? cat : Array.isArray(cat?.rows) ? cat.rows : [];
 
+export const sameDay = (a?: Date | null, b?: Date | null): boolean => {
+  if (!a || !b) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+};
+
 /** HSL→HEX */
 function hslToHex(h: number, s: number, l: number) {
   s /= 100; l /= 100;
@@ -144,4 +153,56 @@ export const fmtHMS = (ms: number): string => {
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
   return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
+};
+
+/** Title-case a sentence ("cash & equivalents" -> "Cash & Equivalents") */
+export const titleCase = (s: string | null | undefined) => {
+  if (!s) return "";
+  return s
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (m) => m.toUpperCase());
+};
+
+/** Title-case by words but keep non-letters intact */
+export const titleCaseWords = (s: string | null | undefined): string => {
+  if (!s) return "";
+  return s
+    .split(/\s+/)
+    .map((w) => (/[a-zA-Z]/.test(w[0] ?? "") ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+};
+
+/** Simple stable hash to index into a palette */
+export const hashIndex = (s: string, mod: number) => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h) % Math.max(1, mod);
+};
+
+const hexToRgb = (hex: string) => {
+  const s = hex.replace("#", "");
+  const r = parseInt(s.substring(0, 2), 16);
+  const g = parseInt(s.substring(2, 4), 16);
+  const b = parseInt(s.substring(4, 6), 16);
+  return { r, g, b };
+};
+
+/** Mix a hex color with white by pct (0..1) and return CSS rgb() */
+export const mixWithWhite = (hex: string, pct = 0.85) => {
+  const { r, g, b } = hexToRgb(hex);
+  const R = Math.round(r + (255 - r) * pct);
+  const G = Math.round(g + (255 - g) * pct);
+  const B = Math.round(b + (255 - b) * pct);
+  return `rgb(${R}, ${G}, ${B})`;
+};
+
+/** Get a very light background + border + text color for a given label */
+export const badgeColorsFor = (label: string) => {
+  const pal = palette(24);
+  const base = pal[hashIndex(label, pal.length)];
+  return {
+    text: base,
+    bg: mixWithWhite(base, 0.87),    // very light background
+    border: mixWithWhite(base, 0.70) // slightly darker border
+  };
 };
