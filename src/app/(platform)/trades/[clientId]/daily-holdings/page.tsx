@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CalendarIcon, Check, ChevronsUpDown, Filter, Search, X } from "lucide-react";
-import { fmtCurrency2 as money, fmtNumber } from "@/lib/format";
+import { fmtCurrency2 as money, fmtNumber, sameDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
@@ -58,11 +58,6 @@ function setParam(router: any, sp: URLSearchParams, key: string, val?: string | 
   else next.set(key, val);
   router.replace(`?${next.toString()}`);
 }
-const sameDay = (a?: Date, b?: Date) =>
-  !!a && !!b &&
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
 
 export default function DailyHoldingsPage() {
   const search = useSearchParams();
@@ -214,56 +209,75 @@ export default function DailyHoldingsPage() {
   return (
     <ClientOnly>
       <div className="p-4 md:p-6 space-y-3">
-        {/* Toolbar */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-
-            {/* Date (single or range) */}
-            <div className="flex items-center gap-2">
-              <Label className="text-xs text-muted-foreground">Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("h-9 w-[260px] justify-start text-left font-normal")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {fetchKey.startsWith("R:")
-                      ? fetchKey.slice(2).replace("→", " → ")
-                      : fetchKey.slice(2)}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={range}
-                    onSelect={(r) => {
-                      setRange(r);
-                      if (r?.from && !r?.to) setSelectedDate(r.from);
-                    }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Bank */}
-            <MultiSelect label="Bank" options={uniqBanks} values={banks} onChange={setBanks} placeholder="All banks" />
-            {/* Account */}
-            <MultiSelect label="Account" options={uniqAccounts} values={accounts} onChange={setAccounts} placeholder="All accounts" />
+      {/* Row 1: Date + Bank + Account  |  Search */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        {/* LEFT: date + bank + account */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Date (range) */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Label className="text-xs text-muted-foreground">Date</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "h-9 w-full sm:w-[260px] justify-start text-left font-normal"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {fetchKey.startsWith("R:")
+                    ? fetchKey.slice(2).replace("→", " → ")
+                    : fetchKey.slice(2)}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="range"
+                  selected={range}
+                  onSelect={(r) => {
+                    setRange(r);
+                    if (r?.from && !r?.to) setSelectedDate(r.from);
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
           </div>
 
-          {/* Search */}
-          <div className="flex items-center gap-2">
-            <div className="relative w-[380px]">
+            {/* Bank */}
+            <div className="w-full sm:w-auto">
+              <MultiSelect
+                label="Bank"
+                options={uniqBanks}
+                values={banks}
+                onChange={setBanks}
+                placeholder="All banks"
+              />
+            </div>
+
+            {/* Account */}
+            <div className="w-full sm:w-auto">
+              <MultiSelect
+                label="Account"
+                options={uniqAccounts}
+                values={accounts}
+                onChange={setAccounts}
+                placeholder="All accounts"
+              />
+            </div>
+          </div>
+
+          {/* RIGHT: search */}
+          <div className="w-full md:w-[450px]">
+            <div className="relative">
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search security / bank / account / ISIN / Ticker / CCY / Asset class"
-                className="pl-8"
+                className="pl-8 w-full"
               />
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
-            {/* <Button variant="outline" size="sm" onClick={() => setDrawerOpen(true)}>
-              <Filter className="mr-2 h-4 w-4" /> Filters
-            </Button> */}
           </div>
         </div>
 
@@ -274,7 +288,7 @@ export default function DailyHoldingsPage() {
           allCount={allCount}
           pills={pills}
           counts={countsMap}
-          className="mt-1"
+          className="mt-1 mb-2"
         />
 
         {/* Table */}

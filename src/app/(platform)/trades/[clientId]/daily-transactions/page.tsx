@@ -21,6 +21,7 @@ import { CalendarIcon, Check, ChevronsUpDown, Search, X } from "lucide-react";
 
 import { useClientStore } from "@/stores/clients-store";
 import { cn } from "@/lib/utils";
+import { badgeColorsFor, sameDay } from "@/lib/format";
 
 
 
@@ -31,11 +32,6 @@ function setParam(router: any, sp: URLSearchParams, key: string, val?: string | 
   else next.set(key, val);
   router.replace(`?${next.toString()}`);
 }
-const sameDay = (a?: Date, b?: Date) =>
-  !!a && !!b &&
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
 
 /* ---------- table widths ---------- */
 const COL = {
@@ -221,68 +217,90 @@ export default function DailyTransactionsPage({
 
   return (
     <div className="p-4 md:p-6 space-y-3">
-      {/* Toolbar — left: Date(range) + Account + Pills | right: Search */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Date (range) */}
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("h-9 w-[260px] justify-start text-left font-normal")}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateKey.startsWith("R:")
-                    ? dateKey.slice(2).replace("→", " → ")
-                    : dateKey.slice(2)}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="range"
-                  selected={range}
-                  onSelect={(r: DateRange | undefined) => {
-                    setRange(r);
-                    setPage(1);
-                    if (r?.from && !r?.to) setSelectedDate(r.from);
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+      {/* Toolbar: left = Date+Account, right = Search; Pills in a separate row below */}
+      <div className="space-y-2">
+        {/* Row 1: Date + Account (left)  |  Search (right) */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {/* LEFT: date + account */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Date (range) */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Label className="text-xs text-muted-foreground">Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-9 w-full sm:w-[260px] justify-start text-left font-normal"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateKey.startsWith("R:")
+                      ? dateKey.slice(2).replace("→", " → ")
+                      : dateKey.slice(2)}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={range}
+                    onSelect={(r: DateRange | undefined) => {
+                      setRange(r);
+                      setPage(1);
+                      if (r?.from && !r?.to) setSelectedDate(r.from);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Account */}
+            <div className="w-full sm:w-auto">
+              <MultiSelect
+                label="Account"
+                options={uniqAccounts}
+                values={accounts}
+                onChange={(next) => {
+                  setAccounts(next);
+                  setPage(1);
+                }}
+                placeholder="All accounts"
+              />
+            </div>
           </div>
 
-          {/* Account multi-select */}
-          <MultiSelect
-            label="Account"
-            options={uniqAccounts}
-            values={accounts}
-            onChange={(next) => { setAccounts(next); setPage(1); }}
-            placeholder="All accounts"
-          />
-
-          {/* Category pills with server counts */}
-          <PillTabs
-            value={pill}
-            onChange={(v) => { setPill(v); setPage(1); }}
-            allCount={meta.total}
-            pills={pillList}
-            counts={pillCountsMap}
-          />
-        </div>
-
-        {/* RIGHT — Search */}
-        <div className="flex items-center gap-2">
-          <div className="relative w-[530px]">
-            <Input
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setPage(1); }}
-              placeholder="Search description / account / booking text / category / CCY / sign / filename"
-              className="pl-8"
-            />
-            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          {/* RIGHT: search */}
+          <div className="w-full md:w-[530px]">
+            <div className="relative">
+              <Input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search description / account / booking text / category / CCY / sign / filename"
+                className="pl-8 w-full"
+              />
+              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
           </div>
         </div>
+
+        {/* Row 2: Pills (always below toolbar, wraps nicely) */}
+        <PillTabs
+          value={pill}
+          onChange={(v) => {
+            setPill(v);
+            setPage(1);
+          }}
+          allCount={meta.total}
+          pills={pillList}
+          counts={pillCountsMap}
+          className="mt-1 mb-2"
+        />
       </div>
+
 
       {/* Table */}
       <div className="rounded-xl border">
@@ -324,8 +342,23 @@ export default function DailyTransactionsPage({
                         {r.valueDate}
                       </TableCell>
                       <TableCell className={`${COL.cat} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`}>
-                        <Badge variant="outline" className="rounded-full">{r.category}</Badge>
+                        {(() => {
+                          const c = badgeColorsFor(r.category || "—");
+                          return (
+                            <span
+                              className="rounded-full px-2 py-[2px] text-xs font-medium border"
+                              style={{ backgroundColor: c.bg, borderColor: c.border, color: c.text }}
+                              title={r.category}
+                            >
+                              {r.category}
+                            </span>
+                          );
+                        })()}
                       </TableCell>
+
+                      {/* <TableCell className={`${COL.cat} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`}>
+                        <Badge variant="outline" className="rounded-full">{r.category}</Badge>
+                      </TableCell> */}
                       <TableCell className={`${COL.acct} whitespace-nowrap overflow-hidden text-ellipsis px-3 py-2`} title={r.account}>
                         {r.account}
                       </TableCell>
@@ -350,7 +383,8 @@ export default function DailyTransactionsPage({
                         {Math.abs(r.amount ?? 0).toLocaleString()}
                       </TableCell>
                       <TableCell className={`${COL.ccy} px-3 py-2`}>{r.ccy}</TableCell>
-                      <TableCell className={`${COL.sign} px-3 py-2`}>{r.amountSign}</TableCell>
+                      {/* <TableCell className={`${COL.sign} px-3 py-2`}>{r.amountSign}</TableCell> */}
+                      <TableCell className={`${COL.sign} px-3 py-2 ${r.amountSign === "Inflow" ? "text-emerald-600" : "text-red-600"}`} >{r.amountSign}</TableCell>
                       <TableCell className={`${COL.file} px-3 py-2`}>
                         <div
                           className="whitespace-normal break-words text-[13px] leading-snug"
