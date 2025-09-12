@@ -90,7 +90,7 @@ const data = {
     //   ],
     // },
     {
-      title: "Trades (Draft)",
+      title: "Trades",
       url: "/trades",           // optional; can be "#" or omitted if you don’t want parent clickable
       icon: BarChart3,
       items: [

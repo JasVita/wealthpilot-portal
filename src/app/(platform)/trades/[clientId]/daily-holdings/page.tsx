@@ -46,7 +46,7 @@ const COL = {
   isin:       "min-w-[120px] w-[140px]",
   seckey:     "min-w-[140px] w-[140px]",
   units:      "min-w-[110px] w-[110px] text-right",
-  price:      "min-w-[110px] w-[110px] text-right",
+  price:      "min-w-[120px] w-[120px] text-right",
   balance:    "min-w-[140px] w-[140px] text-right",
   ccy:        "min-w-[70px]  w-[70px] text-right",
 } as const;
@@ -289,7 +289,7 @@ export default function DailyHoldingsPage() {
                 <TableHead className={`${COL.isin} truncate`}>ISIN</TableHead>
                 <TableHead className={`${COL.seckey} truncate`}>Sec. Key</TableHead>
                 <TableHead className={`${COL.units} truncate`}>Units</TableHead>
-                <TableHead className={`${COL.price} truncate`}>Price</TableHead>
+                <TableHead className={`${COL.price} truncate`}>Weighted Price</TableHead>
                 <TableHead className={`${COL.balance} truncate`}>Balance</TableHead>
                 <TableHead className={`${COL.ccy} truncate`}>CCY</TableHead>
               </TableRow>
