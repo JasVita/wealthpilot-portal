@@ -78,7 +78,7 @@ export const useClientStore = create<ClientState>()(
 
       addClient: async (name: string) => {
         const { id: user_id } = useUserStore.getState();
-        if (!user_id) throw new Error("User not logged in – cannot add client");
+        if (!user_id) throw new Error("User not logged in - cannot add client");
 
         const tempId = `tmp-${crypto.randomUUID()}`;
         const tempData: Client = {
