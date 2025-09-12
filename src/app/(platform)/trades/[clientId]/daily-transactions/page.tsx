@@ -14,14 +14,15 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
+import { PillTabs } from "@/components/pill-tabs";
 import { Pagination } from "@/components/pagination";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
-import { CalendarIcon, Check, ChevronsUpDown, Filter, Search, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { CalendarIcon, Check, ChevronsUpDown, Search, X } from "lucide-react";
 
 import { useClientStore } from "@/stores/clients-store";
 import { cn } from "@/lib/utils";
 
-import { PillTabs } from "@/components/pill-tabs";
+
 
 /* ---------- helpers ---------- */
 function setParam(router: any, sp: URLSearchParams, key: string, val?: string | null) {
@@ -218,29 +219,6 @@ export default function DailyTransactionsPage({
   /* -------------------------------- UI -------------------------------- */
   const pillCountsMap = useMemo(() => new Map<string, number>(Object.entries(pillCounts)), [pillCounts]);
 
-  // Build compact page-number list with ellipses
-  const pageButtons = useMemo<(number | "…")[]>(() => {
-    const max = Math.max(1, meta.totalPages || 1);
-    const cur = Math.min(Math.max(1, page), max);
-
-    // show up to 5 numeric buttons plus first/last with ellipses
-    let start = Math.max(1, cur - 2);
-    let end   = Math.min(max, cur + 2);
-
-    // keep ranges anchored near edges
-    if (cur <= 3) { start = 1; end = Math.min(max, 5); }
-    if (cur >= max - 2) { start = Math.max(1, max - 4); end = max; }
-
-    const out: (number | "…")[] = [];
-    const push = (v: number | "…") => out.push(v);
-
-    if (start > 1) { push(1); if (start > 2) push("…"); }
-    for (let i = start; i <= end; i++) push(i);
-    if (end < max) { if (end < max - 1) push("…"); push(max); }
-
-    return out;
-  }, [page, meta.totalPages]);
-
   return (
     <div className="p-4 md:p-6 space-y-3">
       {/* Toolbar — left: Date(range) + Account + Pills | right: Search */}
@@ -397,16 +375,7 @@ export default function DailyTransactionsPage({
       </div>
 
       {/* Pagination */}
-      <Pagination
-        page={page}
-        total={meta.total}
-        pageSize={pageSize}
-        totalPages={meta.totalPages}
-        onChange={setPage}
-      />
-
-      {/* Pagination */}
-
+      <Pagination page={page} total={meta.total} pageSize={pageSize} totalPages={meta.totalPages} onChange={setPage}/>
     </div>
   );
 }
