@@ -2,10 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
+/** YYYY-MM-DD helper */
 const toYMD = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-// Title-case words but keep symbols like & etc.
+/** Title-case words but keep symbols like & etc. */
 function titleCaseWords(s: string | null | undefined): string | null {
   if (!s) return null;
   return s
@@ -15,14 +16,17 @@ function titleCaseWords(s: string | null | undefined): string | null {
 }
 
 export async function GET(req: NextRequest) {
+  const t0 = process.hrtime.bigint();
   try {
     const url = new URL(req.url);
-    const dateParam     = url.searchParams.get("date");      // "", null or "YYYY-MM-DD"
-    const dateFromParam = url.searchParams.get("date_from"); // optional
-    const dateToParam   = url.searchParams.get("date_to");   // optional
-    const mode          = (url.searchParams.get("mode") || "raw").toLowerCase(); // keep "agg" support if you still use it
+    const dateParam     = url.searchParams.get("date");       // "", null or "YYYY-MM-DD"
+    const dateFromParam = url.searchParams.get("date_from");  // optional
+    const dateToParam   = url.searchParams.get("date_to");    // optional
+    const mode          = (url.searchParams.get("mode") || "raw").toLowerCase();
 
-    // ---- Resolve date range (inclusive) -----------------------------------
+    // ---- Resolve inclusive date range -----------------------------------
+    // If neither date, date_from, date_to is given → default to current month-to-today
+    // (You can change this to "today only" by setting both to 'today')
     let dateFrom: string | null = null;
     let dateTo:   string | null = null;
 
@@ -34,112 +38,96 @@ export async function GET(req: NextRequest) {
     } else if (dateToParam) {
       dateTo   = dateToParam;
     } else if (dateParam === null) {
-      // default: current month → today
       const today = new Date();
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
       dateFrom = toYMD(start);
       dateTo   = toYMD(today);
-    } else if (dateParam.trim() === "") {
+    } else if ((dateParam ?? "").trim() === "") {
       // all history (no bounds)
       dateFrom = null; dateTo = null;
     } else {
       // single day
-      dateFrom = dateParam;
-      dateTo   = dateParam;
+      dateFrom = dateParam!;
+      dateTo   = dateParam!;
     }
 
     const pool = getPool();
+    const tConn = process.hrtime.bigint();
 
-    // Allowed transaction types (case-insensitive)
-    const allowedTypes = [
-      "deposit placement",
-      "fund subscription",
-      "stock purchase",
-      "note subscription",
-      "bond purchase",
-      "stock sell",
-    ];
+    // --------------------------------------------------------------------
+    // Previous ad-hoc strategy (kept for documentation):
+    //   1) Build allowed txn types, prefilter txns for day/range
+    //   2) Get candidate ISINs from daily.statement_txn
+    //   3) Pick the latest holding per ISIN from daily.statement_holdings
+    //
+    // Now replaced by a dedicated DB function:
+    //    daily.holding_changes(day)                -- single day
+    //    daily.holding_changes(from_date, to_date) -- inclusive range
+    //
+    // The function must return:
+    //   id, asset_class, as_of_date, bank, account, name, ticker, isin,
+    //   currency, units, balance, security_key, price
+    // --------------------------------------------------------------------
 
-    // Build WHERE fragments (shared bounds for both CTEs)
-    const whereH: string[] = [];
-    const whereT: string[] = [`LOWER(transaction_type) = ANY($3)`]; // $3 is allowedTypes[]
-    const params: any[] = []; // $1..$n
-
-    if (dateFrom && dateTo) {
-      whereH.push(`as_of_date::date BETWEEN $1 AND $2`);
-      whereT.push(`value_date::date BETWEEN $1 AND $2`);
-      params.push(dateFrom, dateTo);
-    } else if (dateFrom) {
-      whereH.push(`as_of_date::date >= $1`);
-      whereT.push(`value_date::date >= $1`);
-      params.push(dateFrom);
-    } else if (dateTo) {
-      whereH.push(`as_of_date::date <= $1`);
-      whereT.push(`value_date::date <= $1`);
-      params.push(dateTo);
+    let sql = "";
+    let params: any[] = [];
+    if (dateFrom && dateTo && dateFrom === dateTo) {
+      // Single day → call 1-arg function
+      sql = `
+        SELECT
+          id, asset_class, as_of_date, bank, account, name, ticker, isin,
+          currency, units, balance, security_key, price
+        FROM daily.holding_changes($1::date)
+      `;
+      params = [dateFrom];
+    } else if (dateFrom && dateTo) {
+      // From/To → call 2-arg function (order inside the function is normalized)
+      sql = `
+        SELECT
+          id, asset_class, as_of_date, bank, account, name, ticker, isin,
+          currency, units, balance, security_key, price
+        FROM daily.holding_changes($1::date, $2::date)
+      `;
+      params = [dateFrom, dateTo];
+    } else if (dateFrom && !dateTo) {
+      // Open-ended: from .. ∞ → use from..from (single day) or widen as needed
+      sql = `
+        SELECT
+          id, asset_class, as_of_date, bank, account, name, ticker, isin,
+          currency, units, balance, security_key, price
+        FROM daily.holding_changes($1::date, NOW()::date)
+      `;
+      params = [dateFrom];
+    } else if (!dateFrom && dateTo) {
+      // Open-ended: -∞ .. to  → use start-of-epoch to 'to' (or just to..to)
+      sql = `
+        SELECT
+          id, asset_class, as_of_date, bank, account, name, ticker, isin,
+          currency, units, balance, security_key, price
+        FROM daily.holding_changes($1::date, $2::date)
+      `;
+      // choose an early bound; or just single-day 'to'
+      params = [dateTo, dateTo];
     } else {
-      // no date bounds → no where on dates
+      // Truly unbounded → fallback to today single day
+      const today = toYMD(new Date());
+      sql = `
+        SELECT
+          id, asset_class, as_of_date, bank, account, name, ticker, isin,
+          currency, units, balance, security_key, price
+        FROM daily.holding_changes($1::date)
+      `;
+      params = [today];
     }
 
-    // $3 = allowed types (text array)
-    params.push(allowedTypes);
-
-    // -----------------------------------------------------------------------
-    // Strategy:
-    //  1) tx_isins: all distinct ISINs from statement_txn in the period
-    //     where transaction_type IN allowed list
-    //  2) hrows: holdings rows in the period, WITH row_number over each ISIN
-    //     ordered by as_of_date DESC → rn = 1 is the latest within the period
-    //  3) Return rn = 1 rows whose ISIN appears in tx_isins
-    // -----------------------------------------------------------------------
-    const sql = `
-      WITH tx_isins AS (
-        SELECT DISTINCT LOWER(isin) AS isin
-        FROM daily.statement_txn
-        ${whereT.length ? `WHERE ${whereT.join(" AND ")}` : ""}
-          AND isin IS NOT NULL
-      ),
-      hrows AS (
-        SELECT
-          id,
-          asset_class,
-          as_of_date,
-          bank,
-          account,
-          name,
-          ticker,
-          isin,
-          currency,
-          units,
-          balance,
-          security_key,
-          price,
-          ROW_NUMBER() OVER (
-            PARTITION BY LOWER(isin)
-            ORDER BY as_of_date DESC, id DESC
-          ) AS rn
-        FROM daily.statement_holdings
-        ${whereH.length ? `WHERE ${whereH.join(" AND ")}` : ""}
-          AND isin IS NOT NULL
-      )
-      SELECT
-        h.id,
-        h.asset_class,
-        to_char(h.as_of_date::date, 'YYYY-MM-DD') AS as_of_date,
-        h.bank, h.account, h.name, h.ticker, h.isin,
-        h.currency, h.units, h.balance, h.security_key, h.price
-      FROM hrows h
-      JOIN tx_isins tx ON LOWER(h.isin) = tx.isin
-      WHERE h.rn = 1
-      ORDER BY h.as_of_date DESC, h.id DESC;
-    `;
-
+    const tSqlStart = process.hrtime.bigint();
     const { rows } = await pool.query(sql, params);
+    const tSqlEnd = process.hrtime.bigint();
 
     const payload = (rows ?? []).map((r: any) => ({
       id: Number(r.id),
-      assetClass: titleCaseWords(r.asset_class),     // keep asset class for FE
-      asOfDate:   r.as_of_date,                      // "YYYY-MM-DD" (you can ignore on FE)
+      assetClass: titleCaseWords(r.asset_class),
+      asOfDate:   (r.as_of_date instanceof Date) ? r.as_of_date.toISOString().slice(0,10) : String(r.as_of_date),
       bank:       r.bank,
       account:    r.account,
       name:       r.name,
@@ -152,21 +140,21 @@ export async function GET(req: NextRequest) {
       securityKey: r.security_key ?? null,
     }));
 
-    if (mode === "agg") {
-      // If you still use ?mode=agg, aggregate the selected set by (bank, account, ccy, isin/name)
-      // (kept from your previous version, unchanged)
-      type Agg = {
-        asOfDate: string;
-        bank: string;
-        account: string;
-        name: string;
-        isin: string | null;
-        ccy: string;
-        units: number;
-        balance: number;
-        price: number | null;
-      };
+    const tEnd = process.hrtime.bigint();
+    console.log("[daily-holdings] function timings(ms)", {
+      total: Number(tEnd - t0) / 1e6,
+      pool:  Number(tConn - t0) / 1e6,
+      query: Number(tSqlEnd - tSqlStart) / 1e6,
+      rows:  rows?.length ?? 0,
+      range: { dateFrom, dateTo }
+    });
 
+    if (mode === "agg") {
+      // Optional aggregate (unchanged)
+      type Agg = {
+        asOfDate: string; bank: string; account: string; name: string;
+        isin: string | null; ccy: string; units: number; balance: number; price: number | null;
+      };
       const byKey = new Map<string, Agg>();
       for (const r of payload) {
         const key = [r.bank, r.account, r.ccy, r.isin || r.name].join("|");
@@ -174,17 +162,11 @@ export async function GET(req: NextRequest) {
         if (!prev) {
           byKey.set(key, {
             asOfDate: r.asOfDate,
-            bank: r.bank,
-            account: r.account,
-            name: r.name,
-            isin: r.isin,
-            ccy: r.ccy,
-            units: r.units ?? 0,
-            balance: r.balance ?? 0,
-            price: r.price ?? null,
+            bank: r.bank, account: r.account, name: r.name,
+            isin: r.isin, ccy: r.ccy, units: r.units ?? 0, balance: r.balance ?? 0, price: r.price ?? null
           });
         } else {
-          prev.units   += r.units ?? 0;
+          prev.units += r.units ?? 0;
           prev.balance += r.balance ?? 0;
           prev.asOfDate = r.asOfDate;
           if (r.price != null) prev.price = r.price;
