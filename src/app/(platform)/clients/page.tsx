@@ -13,9 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Star } from "lucide-react";
 
 import { useClientStore } from "@/stores/clients-store";
-
-const fmtCurrency = (n?: number) =>
-  n == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+import {  fmtCurrency2 } from "@/lib/format";
 
 export default function ClientListPage() {
   const router = useRouter();
@@ -151,9 +149,9 @@ export default function ClientListPage() {
                       <div className="text-xs text-muted-foreground">{s.code ?? c.id}</div>
                     </TableCell>
                     <TableCell className="text-right">{s.total_custodians ?? "—"}</TableCell>
-                    <TableCell className="text-right">{fmtCurrency(net)}</TableCell>
-                    <TableCell className="text-right">{fmtCurrency(s.total_assets_usd)}</TableCell>
-                    <TableCell className="text-right">{fmtCurrency(s.total_debts_usd)}</TableCell>
+                    <TableCell className="text-right">{ fmtCurrency2(net)}</TableCell>
+                    <TableCell className="text-right">{ fmtCurrency2(s.total_assets_usd)}</TableCell>
+                    <TableCell className="text-right">{ fmtCurrency2(s.total_debts_usd)}</TableCell>
                     <TableCell>{s.rm ?? "—"}</TableCell>
                     <TableCell>{s.mandate_type ?? "—"}</TableCell>
                     <TableCell className="text-center">{s.risk_profile ?? "—"}</TableCell>
@@ -176,9 +174,9 @@ export default function ClientListPage() {
                 <TableCell />
                 <TableCell>Total</TableCell>
                 <TableCell className="text-right">{totals.total_custodians}</TableCell>
-                <TableCell className="text-right">{fmtCurrency(totals.net_assets)}</TableCell>
-                <TableCell className="text-right">{fmtCurrency(totals.total_assets)}</TableCell>
-                <TableCell className="text-right">{fmtCurrency(totals.total_debts)}</TableCell>
+                <TableCell className="text-right">{ fmtCurrency2(totals.net_assets)}</TableCell>
+                <TableCell className="text-right">{ fmtCurrency2(totals.total_assets)}</TableCell>
+                <TableCell className="text-right">{ fmtCurrency2(totals.total_debts)}</TableCell>
                 <TableCell colSpan={5} />
               </TableRow>
             </TableBody>

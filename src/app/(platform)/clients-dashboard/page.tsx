@@ -10,6 +10,7 @@ import { Plus, Pencil, Trash2 as Trash, Eye, ChevronDown, User, Building2, Bankn
 import { cn } from "@/lib/utils";
 import { useClientStore } from "@/stores/clients-store";
 import { toast } from "sonner";
+import { fmtCurrency2 } from "@/lib/format"; // ⬅️ 2-decimal formatter
 
 /* -------------------------------------------------------------------------- */
 /*                                   Types                                    */
@@ -19,7 +20,7 @@ interface NodeData {
   id: string;
   type: "advisor" | "client" | "entity" | "account";
   name: string;
-  /** formatted value string, e.g. "$12 345 678" */
+  /** formatted value string, e.g. "$12,345,678.00" */
   value: string;
   children?: NodeData[];
 }
@@ -29,12 +30,6 @@ interface NodeData {
 /* -------------------------------------------------------------------------- */
 
 const generateId = (p: string) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
-
-const moneyFmt = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
 
 /* -------------------------------------------------------------------------- */
 /*                                 Tree node                                  */
@@ -132,7 +127,7 @@ export default function ClientManagementPage() {
 
   useEffect(() => {
     loadClients();
-  }, []);
+  }, [loadClients]);
 
   /* ---------------------- build tree from pieChartData --------------------- */
   const clients: NodeData[] = useMemo(() => {
@@ -152,7 +147,7 @@ export default function ClientManagementPage() {
             id: `${id}-bank-${idx}`,
             type: "entity",
             name: label,
-            value: moneyFmt.format(aum.data[idx] ?? 0),
+            value: fmtCurrency2(aum.data[idx] ?? 0), // ⬅️ 2dp
             children: [],
           }));
         }
@@ -162,7 +157,7 @@ export default function ClientManagementPage() {
         id,
         type: "client",
         name: c.name,
-        value: moneyFmt.format(total),
+        value: fmtCurrency2(total), // ⬅️ 2dp
         children,
       } as NodeData;
     });
@@ -200,16 +195,6 @@ export default function ClientManagementPage() {
     setDialogOpen(false);
   };
 
-  // const handleDelete = async (n: NodeData) => {
-  //   if (confirm(`Delete ${n.name}?`)) {
-  //     try {
-  //       await deleteClient(n.id);
-  //       toast.success("Client deleted 🗑️");
-  //     } catch (err: any) {
-  //       toast.error(err.message || "Delete failed");
-  //     }
-  //   }
-  // };
   const handleDelete = (n: NodeData) => setPendingDelete(n);
 
   /* -------------------------------- Render -------------------------------- */

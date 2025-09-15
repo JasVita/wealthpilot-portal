@@ -122,7 +122,7 @@ export const useClientStore = create<ClientState>()(
 
         try {
           const { id: user_id } = useUserStore.getState();
-          await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/client_clone/${id}`, { params: { user_id } });
+          await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/clients/${id}`, { params: { user_id } });
         } catch (err) {
           set(prev);
           throw err;
@@ -135,7 +135,7 @@ export const useClientStore = create<ClientState>()(
 
         try {
           const { id: user_id } = useUserStore.getState();
-          await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/client_clone/${id}`, { user_id, ...partial });
+          await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/clients/${id}`, { user_id, ...partial });
         } catch (err) {
           set(prev);
           throw err;

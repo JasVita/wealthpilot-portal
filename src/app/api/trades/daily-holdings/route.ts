@@ -16,7 +16,6 @@ function titleCaseWords(s: string | null | undefined): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  const t0 = process.hrtime.bigint();
   try {
     const url = new URL(req.url);
     const dateParam     = url.searchParams.get("date");       // "", null or "YYYY-MM-DD"
@@ -52,7 +51,6 @@ export async function GET(req: NextRequest) {
     }
 
     const pool = getPool();
-    const tConn = process.hrtime.bigint();
 
     // --------------------------------------------------------------------
     // Previous ad-hoc strategy (kept for documentation):
@@ -120,10 +118,7 @@ export async function GET(req: NextRequest) {
       params = [today];
     }
 
-    const tSqlStart = process.hrtime.bigint();
     const { rows } = await pool.query(sql, params);
-    const tSqlEnd = process.hrtime.bigint();
-
     const payload = (rows ?? []).map((r: any) => ({
       id: Number(r.id),
       assetClass: titleCaseWords(r.asset_class),
@@ -139,15 +134,6 @@ export async function GET(req: NextRequest) {
       price:      r.price   != null ? Number(r.price)   : null,
       securityKey: r.security_key ?? null,
     }));
-
-    const tEnd = process.hrtime.bigint();
-    console.log("[daily-holdings] function timings(ms)", {
-      total: Number(tEnd - t0) / 1e6,
-      pool:  Number(tConn - t0) / 1e6,
-      query: Number(tSqlEnd - tSqlStart) / 1e6,
-      rows:  rows?.length ?? 0,
-      range: { dateFrom, dateTo }
-    });
 
     if (mode === "agg") {
       // Optional aggregate (unchanged)
