@@ -2,7 +2,7 @@
 // Client List page or Existing clients:
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { palette, rowsOf, r2 } from "@/lib/format";
+import { palette, rowsOf, r2, balanceVal } from "@/lib/format";  // ← use shared helpers
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,10 +12,6 @@ type BankBlock = Record<string, any> & {
   account_number?: string | null;
   as_of_date?: string | null;
 };
-
-/* -------- small helpers -------- */
-const toNum = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-const balanceVal = (row: any) => toNum(row?.balanceUsd ?? row?.balance ?? 0);
 
 /* -------- build aggregates the same way your old route did -------- */
 function buildAggregates(tableData: BankBlock[]) {

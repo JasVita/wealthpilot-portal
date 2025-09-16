@@ -72,6 +72,16 @@ export const intOrUndef = (v: unknown): number | undefined => {
 /** Safely get rows[] from a bucket which might be array | {rows} | undefined */
 export const rowsOf = (cat: any): any[] => !cat ? [] : Array.isArray(cat) ? cat : Array.isArray(cat?.rows) ? cat.rows : [];
 
+/** Row -> USD value (balanceUsd | balance) */
+export const balanceVal = (row: any) => toNum(row?.balanceUsd ?? row?.balance ?? 0);
+
+/** Sum a category block: prefer subtotalUsd, else sum rows[].balanceUsd/balance */
+export const sumCategory = (cat: any): number => {
+  if (!cat) return 0;
+  if (typeof cat?.subtotalUsd === "number") return cat.subtotalUsd || 0;
+  return rowsOf(cat).reduce((a: number, r: any) => a + balanceVal(r), 0);
+};
+
 export const sameDay = (a?: Date | null, b?: Date | null): boolean => {
   if (!a || !b) return false;
   return (
@@ -120,8 +130,9 @@ function hexToHsl(hex: string): [number, number, number] {
 /** Distinct palette for any N using golden-angle hue spacing */
 export const palette = (n: number): string[] => {
   const BASE = [
-    "#2563EB", "#0EA5A8", "#22C55E", "#7C3AED", "#8B5CF6",
-    "#1D4ED8", "#14B8A6", "#64748B", "#DB2777",
+    "#22C55E", "#7C3AED", "#1D4ED8", "#14B8A6", 
+    "#60a5fa", "#a78bfa", "#fbbf24", "#ef4444",
+    "#f472b6", "#38bdf8", "#f87171", "#f59e0b",
   ];
   if (n <= BASE.length) return BASE.slice(0, n);
 

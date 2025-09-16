@@ -1,6 +1,7 @@
 // curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=44&year=2025&month=7'
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { intOrUndef, r2, rowsOf, sumCategory, palette } from "@/lib/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,28 +12,9 @@ type BankBlock = Record<string, any> & {
   as_of_date?: string | null;
 };
 
-function intOrUndef(v: any) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/** round to 2 decimals */
-const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
-/** Sum a category block: prefer subtotalUsd, else sum rows[].balanceUsd/balance */
-function sumCategory(cat: any): number {
-  if (!cat) return 0;
-  if (typeof cat.subtotalUsd === "number") return cat.subtotalUsd || 0;
-  const rows = Array.isArray(cat) ? cat : Array.isArray(cat?.rows) ? cat.rows : [];
-  return rows.reduce((a: number, r: any) => a + (Number(r?.balanceUsd ?? r?.balance ?? 0) || 0), 0);
-}
-
-/** Get rows[] from a category, normalized */
-function rowsOf(cat: any): any[] {
-  if (!cat) return [];
-  if (Array.isArray(cat)) return cat;
-  if (Array.isArray(cat.rows)) return cat.rows;
-  return [];
+function paletteLocal(n: number) {
+  // OPTIONAL: If you prefer the project-wide palette directly, remove this and use palette(n).
+  return palette(n);
 }
 
 /** Find recent months that have documents */
@@ -67,35 +49,20 @@ async function fetchMonthTableData(clientId: number, y: number, m: number) {
   return q.rows?.[0]?.data ?? { tableData: [] };
 }
 
-function palette(n: number): string[] {
-  const base = [
-    "#60a5fa", "#34d399", "#a78bfa", "#fbbf24",
-    "#f472b6", "#38bdf8", "#f87171", "#c084fc",
-    "#f59e0b", "#10b981", "#22d3ee", "#ef4444",
-  ];
-  const out: string[] = [];
-  for (let i = 0; i < n; i++) out.push(base[i % base.length]);
-  return out;
-}
-
 /** Build chart datasets and also return granular totals we’ll reuse for cards/breakdown */
 function buildAggregates(tableData: BankBlock[]) {
   // BANK AUM (include both legacy and new keys)
   const bankTotals = new Map<string, number>();
   tableData.forEach((b) => {
     const total =
-      // liabilities first so you can see them grouped
-      sumCategory(b.loans) +
-      // asset buckets
-      sumCategory(b.equity_funds ?? b.equities_fund) +
-      sumCategory(b.direct_equities) +
-      sumCategory(b.alternative_funds ?? b.alternative_fund) +
-      sumCategory(b.fixed_income_funds) +
-      sumCategory(b.direct_fixed_income) +
-      // 👇 NEW: include both "structured_products" and "structured_product"
+      sumCategory((b as any).loans) +
+      sumCategory((b as any).equity_funds ?? (b as any).equities_fund) +
+      sumCategory((b as any).direct_equities) +
+      sumCategory((b as any).alternative_funds ?? (b as any).alternative_fund) +
+      sumCategory((b as any).fixed_income_funds) +
+      sumCategory((b as any).direct_fixed_income) +
       sumCategory((b as any).structured_products) +
       sumCategory((b as any).structured_product) +
-      // 👇 NEW: include both "cash_and_equivalents" and "cash_equivalents"
       sumCategory((b as any).cash_and_equivalents) +
       sumCategory((b as any).cash_equivalents);
 
@@ -105,18 +72,14 @@ function buildAggregates(tableData: BankBlock[]) {
   const bankLabels = Array.from(bankTotals.keys());
   const bankData = bankLabels.map((k) => bankTotals.get(k) || 0);
 
-  // ASSET BUCKET TOTALS (canonical -> list all variants)
+  // ASSET BUCKET TOTALS
   const buckets: Array<[string, string[]]> = [
-    // 👇 add both for cash
     ["Cash And Equivalents", ["cash_and_equivalents", "cash_equivalents"]],
     ["Direct Fixed Income", ["direct_fixed_income"]],
     ["Fixed Income Funds", ["fixed_income_funds"]],
     ["Direct Equities", ["direct_equities"]],
-    // existing variants for equity funds
     ["Equities Fund", ["equities_fund", "equity_funds"]],
-    // existing variants for alternatives
     ["Alternative Fund", ["alternative_fund", "alternative_funds"]],
-    // 👇 add both for structured products
     ["Structured Product", ["structured_products", "structured_product"]],
     ["Loans", ["loans"]],
   ];
@@ -131,12 +94,12 @@ function buildAggregates(tableData: BankBlock[]) {
   const assetLabels = buckets.map(([pretty]) => pretty);
   const assetData = assetLabels.map((k) => assetTotals.get(k) || 0);
 
-  // CURRENCY SPLIT — already inclusive here; keep both singular/plural names
+  // CURRENCY SPLIT
   const ccyTotals = new Map<string, number>();
   tableData.forEach((b) => {
     for (const k of [
-      "cash_equivalents",            // NEW-series
-      "cash_and_equivalents",        // legacy
+      "cash_equivalents",
+      "cash_and_equivalents",
       "direct_fixed_income",
       "fixed_income_funds",
       "direct_equities",
@@ -144,8 +107,8 @@ function buildAggregates(tableData: BankBlock[]) {
       "equity_funds",
       "alternative_fund",
       "alternative_funds",
-      "structured_product",          // NEW-series
-      "structured_products",         // legacy
+      "structured_product",
+      "structured_products",
       "loans",
     ]) {
       for (const r of rowsOf((b as any)[k])) {
@@ -173,14 +136,13 @@ function buildAggregates(tableData: BankBlock[]) {
 
   return {
     charts: [
-      { title: "AUM_ratio", labels: bankLabels, data: bankData, colors: palette(bankLabels.length) },
-      { title: "overall_asset_class_breakdown", labels: assetLabels, data: assetData, colors: palette(assetLabels.length) },
-      { title: "overall_currency_breakdown", labels: ccyLabels, data: ccyData, colors: palette(ccyLabels.length) },
+      { title: "AUM_ratio", labels: bankLabels, data: bankData, colors: paletteLocal(bankLabels.length) },
+      { title: "overall_asset_class_breakdown", labels: assetLabels, data: assetData, colors: paletteLocal(assetLabels.length) },
+      { title: "overall_currency_breakdown", labels: ccyLabels, data: ccyData, colors: paletteLocal(ccyLabels.length) },
     ],
     totals: { grossAssets, loans, netAssets, aumFromBanks, breakdown },
   };
 }
-
 
 export async function POST(req: NextRequest) {
   try {
@@ -203,7 +165,6 @@ export async function POST(req: NextRequest) {
     const months = (!y || !m) ? await getRecentMonths(clientId, 12) : [{ y: y!, m: m! }];
     if (!months.length) return NextResponse.json({ status: "ok", overview_data: [], computed: null });
 
-    // choose month with data (or first)
     let sel = months[0];
     let tableData: any = null;
     for (const cand of months) {
@@ -216,10 +177,8 @@ export async function POST(req: NextRequest) {
     const month_date = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
     const tableDataArr: BankBlock[] = Array.isArray(tableData?.tableData) ? tableData.tableData : [];
 
-    // build pies + totals for cards/breakdown
     const agg = buildAggregates(tableDataArr);
 
-    // trend over available months (same 12 we looked up)
     const trend = [];
     for (const cand of months) {
       const td = await fetchMonthTableData(clientId, cand.y, cand.m);

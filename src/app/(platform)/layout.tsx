@@ -39,8 +39,8 @@ import { uploadFileToS3 } from "@/lib/s3Upload";
 
 /** Typed shape for /api/clients/filters response */
 type ClientFiltersResponse = {
-  custodians: unknown[];
-  periods: unknown[];
+  custodians: string[];
+  periods: string[];
   min_date: string | null;
   max_date: string | null;
 };
@@ -68,8 +68,22 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
   // custodian + periods (global)
   const [custodians, setCustodians] = useState<string[]>([]);
+  const [activeCustodianSet, setActiveCustodianSet] = useState<Set<string>>(new Set()); // from assets endpoint
   const { selected: selectedCustodian, setSelected: setSelectedCustodian } = useCustodianStore();
   const { periods, fromDate, toDate, setPeriods, setFromDate, setToDate, reset } = useClientFiltersStore();
+
+  // Active first, inactive later (both A→Z)
+  const { activeList, inactiveList } = useMemo(() => {
+    const act: string[] = [];
+    const inact: string[] = [];
+    for (const c of custodians) {
+      (activeCustodianSet.has(c) ? act : inact).push(c);
+    }
+    act.sort((a, b) => a.localeCompare(b));
+    inact.sort((a, b) => a.localeCompare(b));
+    return { activeList: act, inactiveList: inact };
+  }, [custodians, activeCustodianSet]);
+
 
   // client switch
   function handleClientChange(nextId: string) {
@@ -91,98 +105,215 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   }
 
   // custodians for current client
+  // useEffect(() => {
+  //   let abort = false;
+  //   async function loadCustodians() {
+  //     setCustodians([]);
+  //     if (!currClient) return;
+  //     try {
+  //       const { data } = await axios.get("/api/clients/assets/custodian", {
+  //         params: { client_id: currClient },
+  //       });
+
+  //       // Ensure not-any: treat incoming arrays as unknown[] then narrow to string[]
+  //       const raw: unknown[] = Array.isArray((data as any)?.cash?.by_bank?.labels)
+  //         ? ((data as any).cash.by_bank.labels as unknown[])
+  //         : Array.isArray((data as any)?.custodians)
+  //         ? ((data as any).custodians as unknown[])
+  //         : [];
+
+  //       const list: string[] = raw
+  //         .filter((x): x is string => typeof x === "string")
+  //         .map((s) => s.trim())
+  //         .filter(Boolean);
+
+  //       if (!abort) {
+  //         const uniq = Array.from(new Set<string>(list)).sort();
+  //         setCustodians(uniq);
+  //         if (!uniq.includes(selectedCustodian) && selectedCustodian !== "ALL") {
+  //           setSelectedCustodian("ALL");
+  //         }
+  //       }
+  //     } catch {
+  //       if (!abort) {
+  //         setCustodians([]);
+  //         setSelectedCustodian("ALL");
+  //       }
+  //     }
+  //   }
+  //   loadCustodians();
+  //   return () => {
+  //     abort = true;
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [currClient]);
+    // Load header data without racing: filters (canonical) + assets (active)
   useEffect(() => {
-    let abort = false;
-    async function loadCustodians() {
-      setCustodians([]);
+    let aborted = false;
+    (async () => {
       if (!currClient) return;
-      try {
-        const { data } = await axios.get("/api/clients/assets/custodian", {
-          params: { client_id: currClient },
-        });
-
-        // Ensure not-any: treat incoming arrays as unknown[] then narrow to string[]
-        const raw: unknown[] = Array.isArray((data as any)?.cash?.by_bank?.labels)
-          ? ((data as any).cash.by_bank.labels as unknown[])
-          : Array.isArray((data as any)?.custodians)
-          ? ((data as any).custodians as unknown[])
-          : [];
-
-        const list: string[] = raw
-          .filter((x): x is string => typeof x === "string")
-          .map((s) => s.trim())
-          .filter(Boolean);
-
-        if (!abort) {
-          const uniq = Array.from(new Set<string>(list)).sort();
-          setCustodians(uniq);
-          if (!uniq.includes(selectedCustodian) && selectedCustodian !== "ALL") {
-            setSelectedCustodian("ALL");
-          }
-        }
-      } catch {
-        if (!abort) {
-          setCustodians([]);
-          setSelectedCustodian("ALL");
-        }
-      }
-    }
-    loadCustodians();
-    return () => {
-      abort = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currClient]);
-
-  // load available periods for this client (+ custodian filter)
-  useEffect(() => {
-    let alive = true;
-    async function run() {
-      reset();
-      if (!currClient) return;
-
+      // Build params (periods depend on selected custodian)
       const params = new URLSearchParams({ client_id: String(currClient) });
       if (selectedCustodian && selectedCustodian !== "ALL") {
         params.set("custodian", selectedCustodian);
       }
+      try {
+        // Fetch both together to avoid flicker/race
+        // const [filtersRes, assetsRes] = await Promise.all([
+        //   fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" }),
+        //   fetch(`/api/clients/assets/custodian?client_id=${currClient}`, { cache: "no-store" }),
+        // ]);
+        const filtersRes = await fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" });
+        const filters: {
+          custodians: string[];
+          periods: string[];
+          min_date: string | null;
+          max_date: string | null;
+        } = await filtersRes.json();
+        // const assetsData = await assetsRes.json();
+        if (aborted) return;
 
-      const res = await fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" });
-      const data: ClientFiltersResponse = await res.json();
-      if (!alive) return;
+        // 1) Canonical dropdown list = union of both endpoints’ custodian arrays
+        // const listA = Array.isArray(filters?.custodians) ? filters.custodians : [];
+        // const listB = Array.isArray(assetsData?.custodians) ? assetsData.custodians : [];
+        // const union = Array.from(new Set([...listA, ...listB].map((s) => s?.trim()).filter(Boolean))).sort();
+        // setCustodians(union);
 
-      if (Array.isArray(data?.custodians) && !custodians.length) {
-        const uniq = Array.from(
-          new Set<string>(
-            (data.custodians as unknown[])
-              .filter((x): x is string => typeof x === "string")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          )
-        ).sort();
-        setCustodians(uniq);
+        // 2) Active set (for UI hints / disabling) — NEVER used to replace dropdown
+        // const activeRaw =
+        //   (Array.isArray(assetsData?.cash?.by_bank?.labels) && assetsData.cash.by_bank.labels) ||
+        //   (Array.isArray(assetsData?.custodians) && assetsData.custodians) ||
+        //   [];
+        // setActiveCustodianSet(new Set<string>(activeRaw.map((s: any) => String(s).trim()).filter(Boolean)));
+
+
+        // 3) Periods + default from/to are driven by filters endpoint
+        const union = Array.from(new Set((filters?.custodians ?? []).map((s) => s?.trim()).filter(Boolean))).sort();
+        setCustodians(union);
+        const periodArr = (Array.isArray(filters?.periods) ? filters.periods : []).map((s) => s.slice(0, 10));
+        setPeriods(periodArr);
+
+        // const defFrom: string | null =
+        //   (typeof filters?.min_date === "string" && filters.min_date) ||
+        //   periodArr[periodArr.length - 1] ||
+        //   null;
+        // const defTo: string | null = (typeof filters?.max_date === "string" && filters.max_date) || periodArr[0] || defFrom;
+        // setFromDate(defFrom);
+        // setToDate(defTo);
+
+        // Set default dates:
+        //  - Specific custodian → snap to its min/max
+        //  - ALL → clear (null) so the rest of the app shows full range
+        if (selectedCustodian === "ALL") {
+          setFromDate(null);
+          setToDate(null);
+        } else {
+          const defFrom: string | null =
+            (typeof filters?.min_date === "string" && filters.min_date) ||
+            periodArr[periodArr.length - 1] ||
+            null;
+          const defTo: string | null =
+            (typeof filters?.max_date === "string" && filters.max_date) || periodArr[0] || defFrom;
+          setFromDate(defFrom);
+          setToDate(defTo);
+        }
+ 
+        // 4) Guard invalid selection
+        if (!union.includes(selectedCustodian) && selectedCustodian !== "ALL") {
+          setSelectedCustodian("ALL");
+        }
+      } catch {
+        if (!aborted) {
+          setCustodians([]);
+          setActiveCustodianSet(new Set());
+          setSelectedCustodian("ALL");
+          reset();
+        }
       }
-
-      const periodArr: string[] = (Array.isArray(data?.periods) ? (data.periods as unknown[]) : [])
-        .filter((x): x is string => typeof x === "string")
-        .map((s) => s.slice(0, 10));
-      setPeriods(periodArr);
-
-      const defFrom: string | null =
-        (typeof data?.min_date === "string" && data.min_date) ||
-        periodArr[periodArr.length - 1] ||
-        null;
-      const defTo: string | null =
-        (typeof data?.max_date === "string" && data.max_date) || periodArr[0] || defFrom;
-
-      setFromDate(defFrom);
-      setToDate(defTo);
-    }
-    run();
+    })();
     return () => {
-      alive = false;
+      aborted = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currClient, selectedCustodian]);
+
+  // 2) Recompute "active" custodians whenever date range changes (for UI hints),
+  //    but NEVER override the dropdown list itself.
+  useEffect(() => {
+    let aborted = false;
+    (async () => {
+      if (!currClient) return;
+      const qs = new URLSearchParams({ client_id: String(currClient) });
+      if (fromDate) qs.set("from", fromDate);
+      if (toDate) qs.set("to", toDate);
+      try {
+        const res = await fetch(`/api/clients/assets/custodian?${qs.toString()}`, { cache: "no-store" });
+        const data = await res.json();
+        if (aborted) return;
+        const activeRaw =
+          (Array.isArray(data?.cash?.by_bank?.labels) && data.cash.by_bank.labels) ||
+          (Array.isArray(data?.custodians) && data.custodians) ||
+          [];
+        setActiveCustodianSet(new Set<string>( (activeRaw as unknown[]).map((s: unknown): string => String(s).trim()).filter((s): s is string => s.length > 0) ));
+      } catch {
+        if (!aborted) setActiveCustodianSet(new Set());
+      }
+    })();
+    return () => {
+      aborted = true;
+    };
+  }, [currClient, fromDate, toDate]);
+
+  // load available periods for this client (+ custodian filter)
+  // When client/custodian change, refresh periods. (Kept, but no longer mutates `custodians`.)
+  // useEffect(() => {
+  //   let alive = true;
+  //   async function run() {
+  //     reset();
+  //     if (!currClient) return;
+
+  //     const params = new URLSearchParams({ client_id: String(currClient) });
+  //     if (selectedCustodian && selectedCustodian !== "ALL") {
+  //       params.set("custodian", selectedCustodian);
+  //     }
+
+  //     const res = await fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" });
+  //     const data: ClientFiltersResponse = await res.json();
+  //     if (!alive) return;
+
+  //     // if (Array.isArray(data?.custodians) && !custodians.length) {
+  //     //   const uniq = Array.from(
+  //     //     new Set<string>(
+  //     //       (data.custodians as unknown[])
+  //     //         .filter((x): x is string => typeof x === "string")
+  //     //         .map((s) => s.trim())
+  //     //         .filter(Boolean)
+  //     //     )
+  //     //   ).sort();
+  //     //   setCustodians(uniq);
+  //     // }
+
+  //     const periodArr: string[] = (Array.isArray(data?.periods) ? (data.periods as unknown[]) : [])
+  //       .filter((x): x is string => typeof x === "string")
+  //       .map((s) => s.slice(0, 10));
+  //     setPeriods(periodArr);
+
+  //     const defFrom: string | null =
+  //       (typeof data?.min_date === "string" && data.min_date) ||
+  //       periodArr[periodArr.length - 1] ||
+  //       null;
+  //     const defTo: string | null =
+  //       (typeof data?.max_date === "string" && data.max_date) || periodArr[0] || defFrom;
+
+  //     setFromDate(defFrom);
+  //     setToDate(defTo);
+  //   }
+  //   run();
+  //   return () => {
+  //     alive = false;
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [currClient, selectedCustodian]);
 
   // From/To guards
   const handleFromChange = (d: string) => {
@@ -194,8 +325,16 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     if (fromDate && d < fromDate) setFromDate(d);
   };
 
+  // function handleCustodianChange(next: string) {
+  //   setSelectedCustodian(next);
+  // }
   function handleCustodianChange(next: string) {
     setSelectedCustodian(next);
+    // UX: if user switches to ALL, clear dates immediately (the effect will keep them null)
+    if (next === "ALL") {
+      setFromDate(null);
+      setToDate(null);
+    }
   }
 
   // upload logic
@@ -320,11 +459,21 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                     <SelectGroup>
                       <SelectLabel>Custodians</SelectLabel>
                       <SelectItem value="ALL">All</SelectItem>
-                      {custodians.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
+
+                      {/* Active (A→Z) */}
+                      {activeList.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
+
+                      {/* Inactive (A→Z) */}
+                      {inactiveList.length > 0 && (
+                        <>
+                          <SelectLabel className="text-muted-foreground">No data for range</SelectLabel>
+                          {inactiveList.map((c) => (
+                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
