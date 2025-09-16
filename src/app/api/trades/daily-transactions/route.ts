@@ -1,4 +1,4 @@
-// src/app/api/trades/daily-transactions/route.ts
+// src/app/api/trades/daily-transactions/route.ts -- update to fetch dat with function later!!!
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
