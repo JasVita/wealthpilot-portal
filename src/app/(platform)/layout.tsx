@@ -34,57 +34,44 @@ import { useClientStore } from "@/stores/clients-store";
 import { useUserStore } from "@/stores/user-store";
 import { useWealthStore } from "@/stores/wealth-store";
 import { useCustodianStore } from "@/stores/custodian-store";
+import { useClientFiltersStore } from "@/stores/client-filters-store";
 import { uploadFileToS3 } from "@/lib/s3Upload";
+
+/** Typed shape for /api/clients/filters response */
+type ClientFiltersResponse = {
+  custodians: unknown[];
+  periods: unknown[];
+  min_date: string | null;
+  max_date: string | null;
+};
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isTrades = pathname?.startsWith("/trades/");
 
-  // ───────────────────────── stores / state
+  // stores
   const { clients, order, currClient, setCurrClient, loadClients } = useClientStore();
   const { id: user_id } = useUserStore();
   const { clearStorage } = useWealthStore();
 
-  // Upload state
+  // upload state
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<"" | "loading" | "success" | "warning" | "error">("");
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState({
     done: 0,
     total: 0,
-    state: "PENDING" as
-      | "PENDING"
-      | "PROGRESS"
-      | "SUCCESS"
-      | "PARTIAL_SUCCESS"
-      | "FAILURE"
-      | "REVOKED",
+    state: "PENDING" as "PENDING" | "PROGRESS" | "SUCCESS" | "PARTIAL_SUCCESS" | "FAILURE" | "REVOKED",
     failed: [] as any[],
   });
 
-  // Custodian global selection
+  // custodian + periods (global)
   const [custodians, setCustodians] = useState<string[]>([]);
   const { selected: selectedCustodian, setSelected: setSelectedCustodian } = useCustodianStore();
+  const { periods, fromDate, toDate, setPeriods, setFromDate, setToDate, reset } = useClientFiltersStore();
 
-  // Period (month) — display only
-  const months = useMemo(() => {
-    const out: { value: string; label: string }[] = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-      const value = d.toISOString().slice(0, 7); // YYYY-MM
-      const label = d.toLocaleDateString("en-US", { year: "numeric", month: "short" }); // Sep 2025
-      out.push({ value, label });
-    }
-    return out;
-  }, []);
-  const [period, setPeriod] = useState<string>(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 7);
-  });
-
-  // ───────────────────────── client switch
+  // client switch
   function handleClientChange(nextId: string) {
     setCurrClient(nextId);
 
@@ -103,26 +90,31 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     router.push(`/clients/${nextId}/assets/holdings`);
   }
 
-  // ───────────────────────── custodians for current client
+  // custodians for current client
   useEffect(() => {
     let abort = false;
     async function loadCustodians() {
       setCustodians([]);
       if (!currClient) return;
       try {
-        // reuse custodian API (it returns by_bank.labels in your latest route)
         const { data } = await axios.get("/api/clients/assets/custodian", {
           params: { client_id: currClient },
         });
 
-        const list: string[] = Array.isArray(data?.cash?.by_bank?.labels)
-          ? data.cash.by_bank.labels
-          : Array.isArray(data?.custodians)
-          ? data.custodians
+        // Ensure not-any: treat incoming arrays as unknown[] then narrow to string[]
+        const raw: unknown[] = Array.isArray((data as any)?.cash?.by_bank?.labels)
+          ? ((data as any).cash.by_bank.labels as unknown[])
+          : Array.isArray((data as any)?.custodians)
+          ? ((data as any).custodians as unknown[])
           : [];
 
+        const list: string[] = raw
+          .filter((x): x is string => typeof x === "string")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
         if (!abort) {
-          const uniq = Array.from(new Set(list.filter(Boolean))).sort();
+          const uniq = Array.from(new Set<string>(list)).sort();
           setCustodians(uniq);
           if (!uniq.includes(selectedCustodian) && selectedCustodian !== "ALL") {
             setSelectedCustodian("ALL");
@@ -142,15 +134,71 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currClient]);
 
+  // load available periods for this client (+ custodian filter)
+  useEffect(() => {
+    let alive = true;
+    async function run() {
+      reset();
+      if (!currClient) return;
+
+      const params = new URLSearchParams({ client_id: String(currClient) });
+      if (selectedCustodian && selectedCustodian !== "ALL") {
+        params.set("custodian", selectedCustodian);
+      }
+
+      const res = await fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" });
+      const data: ClientFiltersResponse = await res.json();
+      if (!alive) return;
+
+      if (Array.isArray(data?.custodians) && !custodians.length) {
+        const uniq = Array.from(
+          new Set<string>(
+            (data.custodians as unknown[])
+              .filter((x): x is string => typeof x === "string")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          )
+        ).sort();
+        setCustodians(uniq);
+      }
+
+      const periodArr: string[] = (Array.isArray(data?.periods) ? (data.periods as unknown[]) : [])
+        .filter((x): x is string => typeof x === "string")
+        .map((s) => s.slice(0, 10));
+      setPeriods(periodArr);
+
+      const defFrom: string | null =
+        (typeof data?.min_date === "string" && data.min_date) ||
+        periodArr[periodArr.length - 1] ||
+        null;
+      const defTo: string | null =
+        (typeof data?.max_date === "string" && data.max_date) || periodArr[0] || defFrom;
+
+      setFromDate(defFrom);
+      setToDate(defTo);
+    }
+    run();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currClient, selectedCustodian]);
+
+  // From/To guards
+  const handleFromChange = (d: string) => {
+    setFromDate(d);
+    if (toDate && d > toDate) setToDate(d);
+  };
+  const handleToChange = (d: string) => {
+    setToDate(d);
+    if (fromDate && d < fromDate) setFromDate(d);
+  };
+
   function handleCustodianChange(next: string) {
     setSelectedCustodian(next);
-    // If you later want this reflected in the URL:
-    // const sp = new URLSearchParams(window.location.search);
-    // if (next === "ALL") sp.delete("custodian"); else sp.set("custodian", next);
-    // router.replace(`${pathname}?${sp.toString()}`);
   }
 
-  // ───────────────────────── upload logic (restored)
+  // upload logic
   const isFinished = (state: string) =>
     state === "SUCCESS" || state === "PARTIAL_SUCCESS" || state === "FAILURE" || state === "REVOKED";
 
@@ -173,9 +221,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             toast.success("Analysis completed! All files processed.");
             setStatus("success");
           } else if (data.state === "PARTIAL_SUCCESS") {
-            toast.warning(
-              `Finished with some errors – ${data.failed?.length ?? 0} of ${fileCount} file(s) failed.`
-            );
+            toast.warning(`${data.failed?.length ?? 0} of ${fileCount} file(s) failed.`);
             setStatus("warning");
           } else {
             toast.error("Upload failed – please try again.");
@@ -187,7 +233,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         toast.error("Network error while checking progress.");
         setStatus("error");
       }
-    }, 60_000); // 60s like your previous version
+    }, 60_000);
   };
 
   const handleUpload = async (theFiles: File[]) => {
@@ -198,7 +244,6 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     try {
       clearStorage();
 
-      // Upload to S3; your helper returns a public URL per file
       const fileUrls = await Promise.all(theFiles.map(uploadFileToS3));
 
       const base = process.env.NEXT_PUBLIC_API_URL;
@@ -209,9 +254,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       });
 
       const taskId = data?.task1_idnew || data?.task_id || data?.task1_id || "";
-      if (!taskId) {
-        throw new Error("No task id returned from upload API.");
-      }
+      if (!taskId) throw new Error("No task id returned from upload API.");
 
       toast.info("Files uploaded. Analyzing...");
       setProgress({ done: 0, total: fileUrls.length, state: "PENDING", failed: [] });
@@ -221,19 +264,17 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       toast.error(err?.message || "Upload failed, please try again later or contact support.");
       setStatus("error");
     } finally {
-      // refresh client list after analysis kicks off
       loadClients();
     }
   };
 
   const addFiles = (newFiles: FileList) => {
-    setFiles((prev) => [...prev, ...Array.from(newFiles)]);
+    setFiles((prev) => [...prev, ...Array.from<File>(newFiles)]);
   };
   const removeFile = (name: string) => {
     setFiles((prev) => prev.filter((f) => f.name !== name));
   };
 
-  // ───────────────────────── UI
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -248,7 +289,6 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             />
 
             {isTrades ? (
-              /* page-level toolbar can portal here if needed */
               <div id="header-left-slot" className="flex items-center gap-2" />
             ) : (
               <>
@@ -272,7 +312,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                 {/* Custodian */}
                 <Separator orientation="vertical" className="mx-2 h-4" />
                 <span className="text-sm text-muted-foreground">Custodian:</span>
-                <Select value={selectedCustodian} onValueChange={setSelectedCustodian}>
+                <Select value={selectedCustodian} onValueChange={handleCustodianChange}>
                   <SelectTrigger className="w-[200px]">
                     <SelectValue placeholder="All custodians" />
                   </SelectTrigger>
@@ -289,19 +329,36 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                   </SelectContent>
                 </Select>
 
-                {/* Period (month) — display only */}
+                {/* From / To */}
                 <Separator orientation="vertical" className="mx-2 h-4" />
-                <span className="text-sm text-muted-foreground">Period:</span>
-                <Select value={period} onValueChange={setPeriod}>
+                <span className="text-sm text-muted-foreground">From:</span>
+                <Select value={fromDate ?? undefined} onValueChange={handleFromChange}>
                   <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Select month" />
+                    <SelectValue placeholder="Select date" />
                   </SelectTrigger>
                   <SelectContent className="z-[60]">
                     <SelectGroup>
-                      <SelectLabel>Reporting Month</SelectLabel>
-                      {months.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>
-                          {m.label}
+                      <SelectLabel>From Date</SelectLabel>
+                      {periods.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+
+                <span className="text-sm text-muted-foreground ml-2">To:</span>
+                <Select value={toDate ?? undefined} onValueChange={handleToChange}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Select date" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[60]">
+                    <SelectGroup>
+                      <SelectLabel>To Date</SelectLabel>
+                      {periods.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -348,12 +405,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
                 <FileUpload
                   files={files}
-                  addFiles={(fl: FileList) =>
-                    setFiles((prev: File[]) => [...prev, ...Array.from(fl)])
-                  }
-                  removeFile={(name: string) =>
-                    setFiles((prev: File[]) => prev.filter((f) => f.name !== name))
-                  }
+                  addFiles={(fl: FileList) => setFiles((prev) => [...prev, ...Array.from<File>(fl)])}
+                  removeFile={(name: string) => setFiles((prev) => prev.filter((f) => f.name !== name))}
                   upload={async () => {
                     setOpen(false);
                     await handleUpload(files);
