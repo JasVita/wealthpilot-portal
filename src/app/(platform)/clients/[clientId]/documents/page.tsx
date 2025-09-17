@@ -1,3 +1,4 @@
+// src/app/(platform)/clients/[clientId]/documents/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -22,13 +23,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import axios from "axios";
-
-// ⬇️ import the SAME components you used before
-// import DocDialog from "./doc-dialog"
 import DeleteButton from "./delete-button";
 
-// If you already have a Doc type, keep using it.
-// Otherwise this shape matches your API.
 export interface Doc {
   id: string | number;
   bankname?: string;
@@ -40,8 +36,18 @@ export interface Doc {
   exp?: string | null;
   assets?: any;
   transactions?: any;
-  createdAt?: string | null;   // ✅ add this line
+  createdAt?: string | null;
 }
+
+/* ---------- column widths (fixed layout) ---------- */
+const COL = {
+  bank:   "min-w-[120px] w-[160px]",
+  acct:   "min-w-[120px] w-[160px]",
+  name:   "min-w-[340px] w-[420px]",
+  asof:   "min-w-[120px] w-[120px]",
+  upload: "min-w-[120px] w-[120px]",
+  acts:   "min-w-[96px]  w-[96px]",
+} as const;
 
 /* -------------------- icons -------------------- */
 function FileTypeIcon({ filename }: { filename: string }) {
@@ -51,37 +57,17 @@ function FileTypeIcon({ filename }: { filename: string }) {
     bg = "bg-slate-100";
 
   switch (ext) {
-    case "pdf":
-      Icon = FileText;
-      color = "text-red-600";
-      bg = "bg-red-50";
-      break;
+    case "pdf":  Icon = FileText;        color = "text-red-600";    bg = "bg-red-50";    break;
     case "doc":
-    case "docx":
-      Icon = FileText;
-      color = "text-blue-600";
-      bg = "bg-blue-50";
-      break;
+    case "docx": Icon = FileText;        color = "text-blue-600";   bg = "bg-blue-50";   break;
     case "xls":
     case "xlsx":
-    case "csv":
-      Icon = FileSpreadsheet;
-      color = "text-green-600";
-      bg = "bg-green-50";
-      break;
+    case "csv":  Icon = FileSpreadsheet; color = "text-green-600";  bg = "bg-green-50";  break;
     case "jpg":
     case "jpeg":
     case "png":
     case "gif":
-    case "webp":
-      Icon = FileImage;
-      color = "text-purple-600";
-      bg = "bg-purple-50";
-      break;
-    default:
-      Icon = File;
-      color = "text-slate-600";
-      bg = "bg-slate-100";
+    case "webp": Icon = FileImage;       color = "text-purple-600"; bg = "bg-purple-50"; break;
   }
 
   return (
@@ -114,35 +100,29 @@ function displayName(d: Partial<Doc>) {
   return fileNameFromUrl(d?.pdf_url) || fileNameFromUrl(d?.excel_url) || `Document ${d?.id ?? ""}`;
 }
 
-function NameCell({
-  filename,
-  href,
-}: {
-  filename: string;
-  href?: string;
-}) {
-  // Use FileTypeIcon you already have
+/** Name cell with *true* 2-line clamp + ellipsis */
+function NameCell({ filename, href }: { filename: string; href?: string }) {
+  const ClampClasses =
+    // allow wrapping, then clamp to 2 lines and hide overflow
+    "min-w-0 whitespace-normal break-words leading-snug " +
+    "[display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] " +
+    "overflow-hidden";
+
   return (
-    <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-start gap-2 min-w-0">
       <FileTypeIcon filename={filename} />
       <div className="min-w-0 flex-1">
         {href ? (
           <Link
             href={href}
-            className="block min-w-0 text-primary hover:underline"
             prefetch={false}
             title={filename}
+            className={clsx("block text-primary hover:underline", ClampClasses)}
           >
-            {/* Truncate uses the full width of the Name column */}
-            <span className="block w-full overflow-hidden text-ellipsis whitespace-nowrap">
-              {filename}
-            </span>
+            {filename}
           </Link>
         ) : (
-          <span
-            className="block w-full overflow-hidden text-ellipsis whitespace-nowrap"
-            title={filename}
-          >
+          <span title={filename} className={clsx("block", ClampClasses)}>
             {filename}
           </span>
         )}
@@ -176,16 +156,7 @@ const FOLDERS: { key: FolderKey; label: string; icon: any }[] = [
 ];
 
 function resolveFolder(_d: Doc): FolderKey {
-  // You currently bucket everything into statements.
   return "statements";
-}
-
-function daysTo(dateStr?: string | null) {
-  if (!dateStr || dateStr === "—") return Infinity;
-  const d = new Date(dateStr);
-  if (isNaN(+d)) return Infinity;
-  const ms = d.getTime() - Date.now();
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
 /* -------------------- page -------------------- */
@@ -201,13 +172,12 @@ export default function DocumentsPage() {
     if (currClient) setCurrClient(currClient);
   }, [currClient, setCurrClient]);
 
-  // fetch documents from API
   useEffect(() => {
     async function fetchDocs() {
       try {
         setLoading(true);
         const { data } = await axios.post<{ status: string; documents: Doc[] }>(
-          "/api/clients/documents",            // ⬅️ internal Next route
+          "/api/clients/documents",
           { client_id: currClient }
         );
         setDocs(data.documents || []);
@@ -220,7 +190,6 @@ export default function DocumentsPage() {
     }
     if (currClient) fetchDocs();
   }, [currClient]);
-
 
   const docsWithFolder = useMemo(
     () => docs.map((doc) => ({ ...doc, __folder: resolveFolder(doc) })),
@@ -299,89 +268,105 @@ export default function DocumentsPage() {
         </CardHeader>
 
         <CardContent>
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader className="sticky top-0 bg-background">
-                <TableRow>
-                  <TableHead className="w-[18%]">Bank</TableHead>
-                  <TableHead className="w-[18%]">Account Number</TableHead>
-                  <TableHead className="w-[35%]">Name</TableHead>
-                  <TableHead className="w-[16%]">As Of Date</TableHead>
-                  <TableHead className="w-[13%]">Upload Date</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-
-
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">Loading documents...</TableCell>
+          <div className="rounded-xl border">
+            <div className="overflow-auto">
+              <Table className="text-sm table-fixed w-full">
+                <TableHeader className="bg-background">
+                  <TableRow className="hover:bg-transparent [&>th]:px-3 [&>th]:py-2 text-md text-muted-foreground">
+                    <TableHead className={`${COL.bank}`}>Bank</TableHead>
+                    <TableHead className={`${COL.acct}`}>Account Number</TableHead>
+                    <TableHead className={`${COL.name}`}>Name</TableHead>
+                    <TableHead className={`${COL.asof}`}>As Of Date</TableHead>
+                    <TableHead className={`${COL.upload}`}>Upload Date</TableHead>
+                    <TableHead className={`${COL.acts} text-center`}>Actions</TableHead>
                   </TableRow>
-                ) : filtered.length > 0 ? (
-                  filtered.map((d, i) => {
-                    const safeFilename =
-                      fileNameFromUrl(d.pdf_url) ||
-                      fileNameFromUrl(d.excel_url) ||
-                      (typeof d.name === "string" ? d.name : "");
+                </TableHeader>
 
-                    const label = displayName(d);
-                    const asOf = d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—";
-                    const uploaded = d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "—";
-                    const docHref = d.id ? `/clients/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}` : undefined;
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                        Loading…
+                      </TableCell>
+                    </TableRow>
+                  ) : filtered.length > 0 ? (
+                    filtered.map((d, i) => {
+                      const safeFilename =
+                        fileNameFromUrl(d.pdf_url) ||
+                        fileNameFromUrl(d.excel_url) ||
+                        (typeof d.name === "string" ? d.name : "");
 
-                    return (
-                      <TableRow key={(d.id ?? i).toString()}>
-                        {/* Bank with ellipsis */}
-                        <TableCell className="max-w-0">
-                          <span
-                            className="block overflow-hidden text-ellipsis whitespace-nowrap"
-                            title={d.bankname ?? "—"}
-                          >
-                            {d.bankname ?? "—"}
-                          </span>
-                        </TableCell>
+                      const label = displayName(d);
+                      const asOf = d.as_of_date ? new Date(d.as_of_date).toISOString().slice(0, 10) : "—";
+                      const uploaded = d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "—";
+                      const docHref = d.id
+                        ? `/clients/${encodeURIComponent(String(currClient))}/documents/${encodeURIComponent(String(d.id))}`
+                        : undefined;
 
-                        {/* Account Number with ellipsis */}
-                        <TableCell className="max-w-0">
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={d.account_number ?? "—"}>{d.account_number ?? "—"}</span>
-                        </TableCell>
+                      return (
+                        <TableRow key={(d.id ?? i).toString()} className="border-t hover:bg-muted/40 align-top">
+                          {/* Bank — 2-line clamp */}
+                          <TableCell className={`${COL.bank} px-3 py-2`}>
+                            <span
+                              title={d.bankname ?? "—"}
+                              className="block min-w-0 whitespace-normal break-words leading-snug
+                                         [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]
+                                         overflow-hidden"
+                            >
+                              {d.bankname ?? "—"}
+                            </span>
+                          </TableCell>
 
-                        {/* Name cell — icon + truncated filename/link */}
-                        <TableCell className="min-w-0"><NameCell filename={safeFilename || label} href={docHref} /></TableCell>
+                          {/* Account Number — fixed width, single-line ellipsis */}
+                          <TableCell className={`${COL.acct} px-3 py-2`}>
+                            <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={d.account_number ?? "—"}>
+                              {d.account_number ?? "—"}
+                            </span>
+                          </TableCell>
 
-                        {/* As Of Date (short) */}
-                        <TableCell className="max-w-0">
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={asOf}>{asOf}</span>
-                        </TableCell>
+                          {/* Name — 2-line clamp with icon */}
+                          <TableCell className={`${COL.name} px-3 py-2`}>
+                            <NameCell filename={safeFilename || label} href={docHref} />
+                          </TableCell>
 
-                        {/* Upload Date (short) */}
-                        <TableCell className="max-w-0">
-                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={uploaded}>{uploaded}</span>
-                        </TableCell>
+                          {/* As Of Date */}
+                          <TableCell className={`${COL.asof} px-3 py-2`}>
+                            <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={asOf}>
+                              {asOf}
+                            </span>
+                          </TableCell>
 
-                        {/* Actions */}
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button size="icon" variant="ghost" aria-label="Download" asChild>
-                              <a href={d.pdf_url ?? d.excel_url ?? "#"} target="_blank" rel="noopener noreferrer">
-                                <Download className="h-4 w-4" />
-                              </a>
-                            </Button>
-                            <DeleteButton doc={d as Doc} docs={docs} setDocs={setDocs} />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No documents found in this folder.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
+                          {/* Upload Date */}
+                          <TableCell className={`${COL.upload} px-3 py-2`}>
+                            <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={uploaded}>
+                              {uploaded}
+                            </span>
+                          </TableCell>
 
-            </Table>
+                          {/* Actions */}
+                          <TableCell className={`${COL.acts} px-3 py-2 text-center`}>
+                            <div className="flex items-center justify-center gap-2">
+                              <Button size="icon" variant="ghost" aria-label="Download" asChild>
+                                <a href={d.pdf_url ?? d.excel_url ?? "#"} target="_blank" rel="noopener noreferrer">
+                                  <Download className="h-4 w-4" />
+                                </a>
+                              </Button>
+                              <DeleteButton doc={d as Doc} docs={docs} setDocs={setDocs} />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                        No documents found in this folder.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>

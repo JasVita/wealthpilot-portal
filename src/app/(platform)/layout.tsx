@@ -1,7 +1,7 @@
 // src/app/(platform)/layout.tsx
 "use client";
 
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
@@ -39,13 +39,19 @@ import { uploadFileToS3 } from "@/lib/s3Upload";
 
 /** Typed shape for /api/clients/filters response */
 type ClientFiltersResponse = {
-  custodians: unknown[];
-  periods: unknown[];
+  custodians: string[];
+  periods: string[];
   min_date: string | null;
   max_date: string | null;
+  /** Added by DB function */
+  accounts?: string[];
+  /** Optional richer map (not required here but kept for future use) */
+  custodian_map?: { bank: string; accounts: string[] }[];
+  /** Bank to auto-select when account is provided */
+  selected_custodian?: string | null;
 };
 
-export default function PlatformLayout({ children }: { children: ReactNode }) {
+export default function PlatformLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isTrades = pathname?.startsWith("/trades/");
@@ -68,8 +74,45 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
   // custodian + periods (global)
   const [custodians, setCustodians] = useState<string[]>([]);
+  const [activeCustodianSet, setActiveCustodianSet] = useState<Set<string>>(new Set());
   const { selected: selectedCustodian, setSelected: setSelectedCustodian } = useCustodianStore();
   const { periods, fromDate, toDate, setPeriods, setFromDate, setToDate, reset } = useClientFiltersStore();
+
+  // Map + hint from /filters
+  const [custodianMap, setCustodianMap] = useState<{ bank: string; accounts: string[] }[]>([]);
+  const [selectedCustodianFromFilter, setSelectedCustodianFromFilter] = useState<string | null>(null);
+
+  // NEW: accounts (for the current selection) + chosen account
+  const [accounts, setAccounts] = useState<string[]>([]);
+  const [account, setAccount] = useState<string>("ALL");
+
+  // race guard for /filters fetches
+  const loadIdRef = useRef(0);
+
+  // Active first, inactive later (both A→Z)
+  const { activeList, inactiveList } = useMemo(() => {
+    const act: string[] = [];
+    const inact: string[] = [];
+    for (const c of custodians) {
+      (activeCustodianSet.has(c) ? act : inact).push(c);
+    }
+    act.sort((a, b) => a.localeCompare(b));
+    inact.sort((a, b) => a.localeCompare(b));
+    return { activeList: act, inactiveList: inact };
+  }, [custodians, activeCustodianSet]);
+
+  // ---- UI helper: in "All + no dates", treat everyone active & hide the inactive bucket
+  const showInactiveGroup = useMemo(
+    () => selectedCustodian !== "ALL" || !!fromDate || !!toDate,
+    [selectedCustodian, fromDate, toDate]
+  );
+
+  const { renderActive, renderInactive } = useMemo(() => {
+    if (selectedCustodian === "ALL" && !fromDate && !toDate) {
+      return { renderActive: custodians, renderInactive: [] as string[] };
+    }
+    return { renderActive: activeList, renderInactive: inactiveList };
+  }, [selectedCustodian, fromDate, toDate, custodians, activeList, inactiveList]);
 
   // client switch
   function handleClientChange(nextId: string) {
@@ -90,112 +133,156 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
     router.push(`/clients/${nextId}/assets/holdings`);
   }
 
-  // custodians for current client
+  // Load header data without racing: filters (periods + accounts) for the current selection
   useEffect(() => {
-    let abort = false;
-    async function loadCustodians() {
-      setCustodians([]);
-      if (!currClient) return;
+    if (!currClient) return;
+
+    let aborted = false;
+    const myId = ++loadIdRef.current;
+
+    (async () => {
+      const params = new URLSearchParams({ client_id: String(currClient) });
+      if (selectedCustodian && selectedCustodian !== "ALL") params.set("custodian", selectedCustodian);
+      if (account && account !== "ALL") params.set("account", account);
+
       try {
-        const { data } = await axios.get("/api/clients/assets/custodian", {
-          params: { client_id: currClient },
-        });
+        const res = await fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" });
+        const filters: ClientFiltersResponse = await res.json();
+        if (aborted || loadIdRef.current !== myId) return; // ignore stale responses
 
-        // Ensure not-any: treat incoming arrays as unknown[] then narrow to string[]
-        const raw: unknown[] = Array.isArray((data as any)?.cash?.by_bank?.labels)
-          ? ((data as any).cash.by_bank.labels as unknown[])
-          : Array.isArray((data as any)?.custodians)
-          ? ((data as any).custodians as unknown[])
+        // custodians for menu
+        const union = Array.from(new Set((filters?.custodians ?? []).map((s) => s?.trim()).filter(Boolean))).sort();
+        setCustodians(union);
+
+        // periods for this (custodian/account) selection
+        const periodArr = (Array.isArray(filters?.periods) ? filters.periods : []).map((s) => s.slice(0, 10));
+        setPeriods(periodArr);
+
+        // custodian map + hint
+        setCustodianMap(Array.isArray(filters?.custodian_map) ? filters.custodian_map : []);
+        setSelectedCustodianFromFilter(
+          typeof filters?.selected_custodian === "string" ? filters.selected_custodian : null
+        );
+
+        // accounts list for selection (all accounts if custodian = ALL and no account)
+        const acctArr: string[] = Array.isArray(filters?.accounts)
+          ? (filters.accounts as string[]).map((s) => s?.trim()).filter(Boolean)
           : [];
+        setAccounts(acctArr);
 
-        const list: string[] = raw
-          .filter((x): x is string => typeof x === "string")
-          .map((s) => s.trim())
-          .filter(Boolean);
+        // Snap dates:
+        // * ALL → clear both (show everything).
+        // * Else → "up to" semantics: To = max_date, From = null.
+        if (selectedCustodian === "ALL" && (!account || account === "ALL")) {
+          setFromDate(null);
+          setToDate(null);
+        } else {
+          const defTo =
+            (typeof filters?.max_date === "string" && filters.max_date) || periodArr[0] || null;
+          setFromDate(null); // "up to" semantics
+          setToDate(defTo);
+        }
 
-        if (!abort) {
-          const uniq = Array.from(new Set<string>(list)).sort();
-          setCustodians(uniq);
-          if (!uniq.includes(selectedCustodian) && selectedCustodian !== "ALL") {
-            setSelectedCustodian("ALL");
+        // Auto-switch custodian if account chosen and server tells us the bank
+        if (account && account !== "ALL" && filters?.selected_custodian) {
+          const bank = filters.selected_custodian;
+          if (bank && bank !== selectedCustodian) {
+            setSelectedCustodian(bank);
           }
         }
-      } catch {
-        if (!abort) {
-          setCustodians([]);
+
+        // guard invalid selection
+        if (!union.includes(selectedCustodian) && selectedCustodian !== "ALL") {
           setSelectedCustodian("ALL");
         }
+      } catch {
+        if (!aborted) {
+          setCustodians([]);
+          setAccounts([]);
+          setAccount("ALL");
+          setActiveCustodianSet(new Set());
+          setSelectedCustodian("ALL");
+          reset();
+        }
       }
-    }
-    loadCustodians();
+    })();
+
     return () => {
-      abort = true;
+      aborted = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currClient]);
+  }, [currClient, selectedCustodian, account]);
 
-  // load available periods for this client (+ custodian filter)
+  // Active custodians reflect the effective window used by Overview
   useEffect(() => {
-    let alive = true;
-    async function run() {
-      reset();
+    let aborted = false;
+
+    (async () => {
       if (!currClient) return;
 
-      const params = new URLSearchParams({ client_id: String(currClient) });
-      if (selectedCustodian && selectedCustodian !== "ALL") {
-        params.set("custodian", selectedCustodian);
+      // Special case: Custodian = ALL AND no dates chosen → treat all as active
+      if (selectedCustodian === "ALL" && !fromDate && !toDate) {
+        setActiveCustodianSet(new Set(custodians));
+        return;
       }
 
-      const res = await fetch(`/api/clients/filters?${params.toString()}`, { cache: "no-store" });
-      const data: ClientFiltersResponse = await res.json();
-      if (!alive) return;
+      // Otherwise, compute from overview for the current range
+      const sorted = [...periods].filter(Boolean).sort(); // asc
+      const effFrom = fromDate ?? sorted[0] ?? null;
+      const effTo = toDate ?? sorted[sorted.length - 1] ?? null;
 
-      if (Array.isArray(data?.custodians) && !custodians.length) {
-        const uniq = Array.from(
-          new Set<string>(
-            (data.custodians as unknown[])
-              .filter((x): x is string => typeof x === "string")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          )
-        ).sort();
-        setCustodians(uniq);
+      try {
+        const params: any = { client_id: currClient };
+        if (effFrom && effTo) {
+          params.from = effFrom;
+          params.to = effTo;
+        } else if (effTo) {
+          params.to = effTo; // to-only; server shows data “up to”
+        }
+        if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+        if (account && account !== "ALL") params.account = account;
+
+        const { data } = await axios.get("/api/clients/assets/overview", { params });
+        if (aborted) return;
+
+        const table = data?.overview_data?.[0]?.table_data?.tableData ?? [];
+        const banks = new Set<string>();
+        for (const b of table) {
+          const name = typeof b?.bank === "string" ? b.bank.trim() : "";
+          if (name) banks.add(name);
+        }
+        setActiveCustodianSet(banks);
+      } catch {
+        if (!aborted) setActiveCustodianSet(new Set());
       }
+    })();
 
-      const periodArr: string[] = (Array.isArray(data?.periods) ? (data.periods as unknown[]) : [])
-        .filter((x): x is string => typeof x === "string")
-        .map((s) => s.slice(0, 10));
-      setPeriods(periodArr);
-
-      const defFrom: string | null =
-        (typeof data?.min_date === "string" && data.min_date) ||
-        periodArr[periodArr.length - 1] ||
-        null;
-      const defTo: string | null =
-        (typeof data?.max_date === "string" && data.max_date) || periodArr[0] || defFrom;
-
-      setFromDate(defFrom);
-      setToDate(defTo);
-    }
-    run();
     return () => {
-      alive = false;
+      aborted = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currClient, selectedCustodian]);
+  }, [currClient, fromDate, toDate, periods, custodians, selectedCustodian, account]);
 
-  // From/To guards
-  const handleFromChange = (d: string) => {
-    setFromDate(d);
-    if (toDate && d > toDate) setToDate(d);
-  };
+  // To acts as "up to" (clear from on change)
   const handleToChange = (d: string) => {
     setToDate(d);
-    if (fromDate && d < fromDate) setFromDate(d);
+    setFromDate(null);
+  };
+
+  // Account selection
+  const handleAccountChange = (acc: string) => {
+    setAccount(acc);
+    // The filters effect will fetch with ?account=... and auto-switch custodian via selected_custodian
   };
 
   function handleCustodianChange(next: string) {
     setSelectedCustodian(next);
+    // reset account when switching custodian
+    setAccount("ALL");
+    // ALL → clear dates immediately
+    if (next === "ALL") {
+      setFromDate(null);
+      setToDate(null);
+    }
   }
 
   // upload logic
@@ -280,7 +367,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       <AppSidebar />
       <SidebarInset className="overflow-hidden max-h-screen">
         <header className="sticky top-0 z-50 bg-white flex h-16 items-center justify-between px-4 border-b">
-          {/* LEFT: client / custodian / period */}
+          {/* LEFT: client / custodian / account / to */}
           <div className="flex items-center gap-2">
             <SidebarTrigger className="-ml-1" />
             <Separator
@@ -320,19 +407,53 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                     <SelectGroup>
                       <SelectLabel>Custodians</SelectLabel>
                       <SelectItem value="ALL">All</SelectItem>
-                      {custodians.map((c) => (
+
+                      {/* Active (A→Z) */}
+                      {renderActive.map((c) => (
                         <SelectItem key={c} value={c}>
                           {c}
+                        </SelectItem>
+                      ))}
+
+                      {/* Inactive (A→Z) */}
+                      {showInactiveGroup && renderInactive.length > 0 && (
+                        <>
+                          <SelectLabel className="text-muted-foreground">No data for range</SelectLabel>
+                          {renderInactive.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+
+                {/* Account (NEW, placed where From used to be) */}
+                <Separator orientation="vertical" className="mx-2 h-4" />
+                <span className="text-sm text-muted-foreground">Account:</span>
+                <Select value={account} onValueChange={handleAccountChange}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="All accounts" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[60]">
+                    <SelectGroup>
+                      <SelectLabel>Accounts</SelectLabel>
+                      <SelectItem value="ALL">All</SelectItem>
+                      {accounts.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {a}
                         </SelectItem>
                       ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
 
-                {/* From / To */}
+                {/* From (commented out per request)
                 <Separator orientation="vertical" className="mx-2 h-4" />
                 <span className="text-sm text-muted-foreground">From:</span>
-                <Select value={fromDate ?? undefined} onValueChange={handleFromChange}>
+                <Select value={fromDate ?? undefined} onValueChange={(d) => setFromDate(d)}>
                   <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Select date" />
                   </SelectTrigger>
@@ -347,8 +468,11 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                     </SelectGroup>
                   </SelectContent>
                 </Select>
+                */}
 
-                <span className="text-sm text-muted-foreground ml-2">To:</span>
+                {/* To (kept) */}
+                <Separator orientation="vertical" className="mx-2 h-4" />
+                <span className="text-sm text-muted-foreground">Up To Date:</span>
                 <Select value={toDate ?? undefined} onValueChange={handleToChange}>
                   <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Select date" />

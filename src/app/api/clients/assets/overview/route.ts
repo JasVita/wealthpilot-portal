@@ -1,6 +1,7 @@
 // curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=44&year=2025&month=7'
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { intOrUndef, r2, rowsOf, sumCategory, palette } from "@/lib/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,33 +12,10 @@ type BankBlock = Record<string, any> & {
   as_of_date?: string | null;
 };
 
-function intOrUndef(v: any) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
+const poolPromise = Promise.resolve().then(() => getPool());
 
-/** round to 2 decimals */
-const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
-/** Sum a category block: prefer subtotalUsd, else sum rows[].balanceUsd/balance */
-function sumCategory(cat: any): number {
-  if (!cat) return 0;
-  if (typeof cat.subtotalUsd === "number") return cat.subtotalUsd || 0;
-  const rows = Array.isArray(cat) ? cat : Array.isArray(cat?.rows) ? cat.rows : [];
-  return rows.reduce((a: number, r: any) => a + (Number(r?.balanceUsd ?? r?.balance ?? 0) || 0), 0);
-}
-
-/** Get rows[] from a category, normalized */
-function rowsOf(cat: any): any[] {
-  if (!cat) return [];
-  if (Array.isArray(cat)) return cat;
-  if (Array.isArray(cat.rows)) return cat.rows;
-  return [];
-}
-
-/** Find recent months that have documents */
 async function getRecentMonths(clientId: number, limit = 12): Promise<Array<{ y: number; m: number }>> {
-  const pool = getPool();
+  const pool = await poolPromise;
   const q = await pool.query<{ y: number; m: number }>(
     `
     with mon as (
@@ -59,7 +37,7 @@ async function getRecentMonths(clientId: number, limit = 12): Promise<Array<{ y:
 }
 
 async function fetchMonthTableData(clientId: number, y: number, m: number) {
-  const pool = getPool();
+  const pool = await poolPromise;
   const q = await pool.query<{ data: any }>(
     "select public.get_month_overview_aggregated($1,$2,$3)::jsonb as data",
     [clientId, y, m]
@@ -67,35 +45,35 @@ async function fetchMonthTableData(clientId: number, y: number, m: number) {
   return q.rows?.[0]?.data ?? { tableData: [] };
 }
 
-function palette(n: number): string[] {
-  const base = [
-    "#60a5fa", "#34d399", "#a78bfa", "#fbbf24",
-    "#f472b6", "#38bdf8", "#f87171", "#c084fc",
-    "#f59e0b", "#10b981", "#22d3ee", "#ef4444",
-  ];
-  const out: string[] = [];
-  for (let i = 0; i < n; i++) out.push(base[i % base.length]);
-  return out;
+async function fetchRangeTableData(
+  clientId: number,
+  fromISO: string,
+  toISO: string,
+  custodian: string | null,
+  account: string | null
+) {
+  const pool = await poolPromise;
+  const q = await pool.query<{ data: any }>(
+    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
+    [clientId, fromISO, toISO, custodian, account]
+  );
+  return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };
 }
 
-/** Build chart datasets and also return granular totals we’ll reuse for cards/breakdown */
+function paletteLocal(n: number) { return palette(n); }
+
 function buildAggregates(tableData: BankBlock[]) {
-  // BANK AUM (include both legacy and new keys)
   const bankTotals = new Map<string, number>();
   tableData.forEach((b) => {
     const total =
-      // liabilities first so you can see them grouped
-      sumCategory(b.loans) +
-      // asset buckets
-      sumCategory(b.equity_funds ?? b.equities_fund) +
-      sumCategory(b.direct_equities) +
-      sumCategory(b.alternative_funds ?? b.alternative_fund) +
-      sumCategory(b.fixed_income_funds) +
-      sumCategory(b.direct_fixed_income) +
-      // 👇 NEW: include both "structured_products" and "structured_product"
+      sumCategory((b as any).loans) +
+      sumCategory((b as any).equity_funds ?? (b as any).equities_fund) +
+      sumCategory((b as any).direct_equities) +
+      sumCategory((b as any).alternative_funds ?? (b as any).alternative_fund) +
+      sumCategory((b as any).fixed_income_funds) +
+      sumCategory((b as any).direct_fixed_income) +
       sumCategory((b as any).structured_products) +
       sumCategory((b as any).structured_product) +
-      // 👇 NEW: include both "cash_and_equivalents" and "cash_equivalents"
       sumCategory((b as any).cash_and_equivalents) +
       sumCategory((b as any).cash_equivalents);
 
@@ -105,18 +83,13 @@ function buildAggregates(tableData: BankBlock[]) {
   const bankLabels = Array.from(bankTotals.keys());
   const bankData = bankLabels.map((k) => bankTotals.get(k) || 0);
 
-  // ASSET BUCKET TOTALS (canonical -> list all variants)
   const buckets: Array<[string, string[]]> = [
-    // 👇 add both for cash
     ["Cash And Equivalents", ["cash_and_equivalents", "cash_equivalents"]],
     ["Direct Fixed Income", ["direct_fixed_income"]],
     ["Fixed Income Funds", ["fixed_income_funds"]],
     ["Direct Equities", ["direct_equities"]],
-    // existing variants for equity funds
     ["Equities Fund", ["equities_fund", "equity_funds"]],
-    // existing variants for alternatives
     ["Alternative Fund", ["alternative_fund", "alternative_funds"]],
-    // 👇 add both for structured products
     ["Structured Product", ["structured_products", "structured_product"]],
     ["Loans", ["loans"]],
   ];
@@ -131,22 +104,11 @@ function buildAggregates(tableData: BankBlock[]) {
   const assetLabels = buckets.map(([pretty]) => pretty);
   const assetData = assetLabels.map((k) => assetTotals.get(k) || 0);
 
-  // CURRENCY SPLIT — already inclusive here; keep both singular/plural names
   const ccyTotals = new Map<string, number>();
   tableData.forEach((b) => {
     for (const k of [
-      "cash_equivalents",            // NEW-series
-      "cash_and_equivalents",        // legacy
-      "direct_fixed_income",
-      "fixed_income_funds",
-      "direct_equities",
-      "equities_fund",
-      "equity_funds",
-      "alternative_fund",
-      "alternative_funds",
-      "structured_product",          // NEW-series
-      "structured_products",         // legacy
-      "loans",
+      "cash_equivalents","cash_and_equivalents","direct_fixed_income","fixed_income_funds","direct_equities",
+      "equities_fund","equity_funds","alternative_fund","alternative_funds","structured_product","structured_products","loans",
     ]) {
       for (const r of rowsOf((b as any)[k])) {
         const c = (r?.currency ?? "USD").toString();
@@ -159,28 +121,23 @@ function buildAggregates(tableData: BankBlock[]) {
   const ccyLabels = ccySorted.map(([k]) => k);
   const ccyData = ccySorted.map(([, v]) => v);
 
-  // CARDS
-  const grossAssets = assetLabels
-    .filter((l) => l !== "Loans")
-    .reduce((a, l) => a + (assetTotals.get(l) || 0), 0);
+  const grossAssets = assetLabels.filter((l) => l !== "Loans").reduce((a, l) => a + (assetTotals.get(l) || 0), 0);
   const loans = assetTotals.get("Loans") || 0;
   const netAssets = grossAssets + loans;
   const aumFromBanks = bankData.reduce((a, b) => a + b, 0);
 
-  // Breakdown with 2dp
   const breakdown: Record<string, number> = {};
   for (const l of assetLabels) breakdown[l] = r2(assetTotals.get(l) || 0);
 
   return {
     charts: [
-      { title: "AUM_ratio", labels: bankLabels, data: bankData, colors: palette(bankLabels.length) },
-      { title: "overall_asset_class_breakdown", labels: assetLabels, data: assetData, colors: palette(assetLabels.length) },
-      { title: "overall_currency_breakdown", labels: ccyLabels, data: ccyData, colors: palette(ccyLabels.length) },
+      { title: "AUM_ratio", labels: bankLabels, data: bankData, colors: paletteLocal(bankLabels.length) },
+      { title: "overall_asset_class_breakdown", labels: assetLabels, data: assetData, colors: paletteLocal(assetLabels.length) },
+      { title: "overall_currency_breakdown", labels: ccyLabels, data: ccyData, colors: paletteLocal(ccyLabels.length) },
     ],
     totals: { grossAssets, loans, netAssets, aumFromBanks, breakdown },
   };
 }
-
 
 export async function POST(req: NextRequest) {
   try {
@@ -190,10 +147,71 @@ export async function POST(req: NextRequest) {
     const month = intOrUndef(body?.month);
     const monthDate: string | undefined = body?.month_date;
 
+    // optional filters
+    const custodian: string | null = (body?.custodian ?? null) || null;
+    const account: string | null =
+      (typeof body?.account === "string" && body.account.trim() && body.account !== "ALL") ? body.account.trim() : null;
+
+    // “to-only” and “from-only” support
+    const fromISO: string | null = body?.from ?? body?.date_from ?? null;
+    const toISO: string | null   = body?.to   ?? body?.date_to   ?? null;
+
     if (!clientId) {
       return NextResponse.json({ status: "error", message: "client_id is required" }, { status: 400 });
     }
 
+    // RANGE MODE when any bound is provided
+    if (fromISO || toISO) {
+      const fromEff = fromISO ?? "1900-01-01";
+      const toEff   = toISO   ?? "9999-12-31";
+      const data = await fetchRangeTableData(clientId, fromEff, toEff, custodian, account);
+      const tableDataArr: BankBlock[] = Array.isArray(data?.tableData) ? data.tableData : [];
+      const agg = buildAggregates(tableDataArr);
+
+      // Trend: build months between bounds
+      const start = new Date(fromEff + "T00:00:00Z");
+      const end   = new Date(toEff   + "T00:00:00Z");
+      const months: { y: number; m: number }[] = [];
+      const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+      while (d <= end) {
+        months.push({ y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 });
+        d.setUTCMonth(d.getUTCMonth() + 1);
+      }
+      const trend = [];
+      for (const cand of months) {
+        const td = await fetchMonthTableData(clientId, cand.y, cand.m);
+        let arr: BankBlock[] = Array.isArray(td?.tableData) ? td.tableData : [];
+        if (custodian) {
+          const ci = custodian.toLowerCase();
+          arr = arr.filter((b) => (b.bank ?? "").toString().toLowerCase() === ci);
+        }
+        if (account) {
+          arr = arr.filter((b) => (b.account_number ?? "") === account);
+        }
+        const t = buildAggregates(arr);
+        const label = new Date(Date.UTC(cand.y, cand.m - 1, 1)).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+        trend.push({ y: cand.y, m: cand.m, label, net_assets: r2(t.totals.netAssets) });
+      }
+
+      return NextResponse.json({
+        status: "ok",
+        overview_data: [
+          { month_date: toEff, pie_chart_data: { charts: agg.charts }, table_data: { tableData: tableDataArr } }
+        ],
+        computed: {
+          cards: {
+            total_assets: r2(agg.totals.grossAssets),
+            total_liabilities: r2(agg.totals.loans),
+            net_assets: r2(agg.totals.netAssets),
+            aum_from_banks: r2(agg.totals.aumFromBanks),
+          },
+          breakdown: agg.totals.breakdown,
+          trend
+        }
+      });
+    }
+
+    // LEGACY SINGLE-MONTH MODE
     let y = year, m = month;
     if (monthDate && (!y || !m)) {
       const d = new Date(monthDate);
@@ -203,7 +221,6 @@ export async function POST(req: NextRequest) {
     const months = (!y || !m) ? await getRecentMonths(clientId, 12) : [{ y: y!, m: m! }];
     if (!months.length) return NextResponse.json({ status: "ok", overview_data: [], computed: null });
 
-    // choose month with data (or first)
     let sel = months[0];
     let tableData: any = null;
     for (const cand of months) {
@@ -213,22 +230,35 @@ export async function POST(req: NextRequest) {
     }
     if (!tableData) tableData = await fetchMonthTableData(clientId, sel.y, sel.m);
 
-    const month_date = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
-    const tableDataArr: BankBlock[] = Array.isArray(tableData?.tableData) ? tableData.tableData : [];
+    // filter by custodian/account if provided
+    let tableDataArr: BankBlock[] = Array.isArray(tableData?.tableData) ? tableData.tableData : [];
+    if (custodian) {
+      const ci = custodian.toLowerCase();
+      tableDataArr = tableDataArr.filter((b) => (b.bank ?? "").toString().toLowerCase() === ci);
+    }
+    if (account) {
+      tableDataArr = tableDataArr.filter((b) => (b.account_number ?? "") === account);
+    }
 
-    // build pies + totals for cards/breakdown
     const agg = buildAggregates(tableDataArr);
 
-    // trend over available months (same 12 we looked up)
     const trend = [];
     for (const cand of months) {
       const td = await fetchMonthTableData(clientId, cand.y, cand.m);
-      const arr: BankBlock[] = Array.isArray(td?.tableData) ? td.tableData : [];
+      let arr: BankBlock[] = Array.isArray(td?.tableData) ? td.tableData : [];
+      if (custodian) {
+        const ci = custodian.toLowerCase();
+        arr = arr.filter((b) => (b.bank ?? "").toString().toLowerCase() === ci);
+      }
+      if (account) {
+        arr = arr.filter((b) => (b.account_number ?? "") === account);
+      }
       const t = buildAggregates(arr);
       const label = new Date(Date.UTC(cand.y, cand.m - 1, 1)).toLocaleDateString("en-US", { month: "short", year: "numeric" });
       trend.push({ y: cand.y, m: cand.m, label, net_assets: r2(t.totals.netAssets) });
     }
 
+    const month_date = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
     return NextResponse.json({
       status: "ok",
       overview_data: [
@@ -257,10 +287,23 @@ export async function GET(req: NextRequest) {
   const year = intOrUndef(sp.get("year"));
   const month = intOrUndef(sp.get("month"));
   const month_date = sp.get("month_date") || undefined;
+
+  const custodian = sp.get("custodian");
+  const accountParam = sp.get("account");
+  const account =
+    accountParam && accountParam !== "ALL" && accountParam.trim().length ? accountParam.trim() : null;
+
+  const from = sp.get("from") ?? sp.get("date_from");
+  const to   = sp.get("to")   ?? sp.get("date_to");
+
+  const body: any = { client_id, year, month, month_date, custodian, account };
+  if (from) body.from = from;
+  if (to) body.to = to;
+
   return POST(
     new NextRequest(req.url, {
       method: "POST",
-      body: JSON.stringify({ client_id, year, month, month_date }),
+      body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
     })
   );
