@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { ClientOnly } from "@/components/ClientOnly"; 
+import { ClientOnly } from "@/components/ClientOnly";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
@@ -40,16 +40,16 @@ type HoldingRow = {
 
 const COL = {
   assetClass: "min-w-[160px] w-[160px]",
-  bank:       "min-w-[60px] w-[120px]",
-  account:    "min-w-[100px] w-[120px]",
-  security:   "min-w-[220px] w-[320px]",
-  ticker:     "min-w-[90px]  w-[90px]",
-  isin:       "min-w-[120px] w-[140px]",
-  seckey:     "min-w-[140px] w-[140px]",
-  units:      "min-w-[110px] w-[110px] text-right",
-  price:      "min-w-[120px] w-[120px] text-right",
-  balance:    "min-w-[140px] w-[140px] text-right",
-  ccy:        "min-w-[70px]  w-[70px] text-right",
+  bank: "min-w-[60px] w-[120px]",
+  account: "min-w-[100px] w-[120px]",
+  security: "min-w-[220px] w-[320px]",
+  ticker: "min-w-[90px]  w-[90px]",
+  isin: "min-w-[120px] w-[140px]",
+  seckey: "min-w-[140px] w-[140px]",
+  units: "min-w-[110px] w-[110px] text-right",
+  price: "min-w-[120px] w-[120px] text-right",
+  balance: "min-w-[140px] w-[140px] text-right",
+  ccy: "min-w-[70px]  w-[70px] text-right",
 } as const;
 
 function setParam(router: any, sp: URLSearchParams, key: string, val?: string | null) {
@@ -69,7 +69,7 @@ export default function DailyHoldingsPage() {
     const dt = search.get("date_to");
     if (df) {
       const from = new Date(df);
-      const to   = dt ? new Date(dt) : undefined;
+      const to = dt ? new Date(dt) : undefined;
       if (!Number.isNaN(+from) && (!dt || !Number.isNaN(+to!))) return { from, to };
     }
     const single = search.get("date");
@@ -209,40 +209,40 @@ export default function DailyHoldingsPage() {
   return (
     <ClientOnly>
       <div className="p-4 md:p-6 space-y-3">
-      {/* Row 1: Date + Bank + Account  |  Search */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        {/* LEFT: date + bank + account */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Date (range) */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Label className="text-xs text-muted-foreground">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "h-9 w-full sm:w-[260px] justify-start text-left font-normal"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {fetchKey.startsWith("R:")
-                    ? fetchKey.slice(2).replace("→", " → ")
-                    : fetchKey.slice(2)}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="range"
-                  selected={range}
-                  onSelect={(r) => {
-                    setRange(r);
-                    if (r?.from && !r?.to) setSelectedDate(r.from);
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
+        {/* Row 1: Date + Bank + Account  |  Search */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {/* LEFT: date + bank + account */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Date (range) */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Label className="text-xs text-muted-foreground">Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-9 w-full sm:w-[260px] justify-start text-left font-normal"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {fetchKey.startsWith("R:")
+                      ? fetchKey.slice(2).replace("→", " → ")
+                      : fetchKey.slice(2)}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={range}
+                    onSelect={(r) => {
+                      setRange(r);
+                      if (r?.from && !r?.to) setSelectedDate(r.from);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
 
             {/* Bank */}
             <div className="w-full sm:w-auto">
@@ -306,7 +306,7 @@ export default function DailyHoldingsPage() {
                   <TableHead className={`${COL.seckey} truncate`}>Sec. Key</TableHead>
                   <TableHead className={`${COL.units} truncate`}>Units</TableHead>
                   <TableHead className={`${COL.price} truncate`}>Weighted Price</TableHead>
-                  <TableHead className={`${COL.balance} truncate`}>Balance</TableHead>
+                  <TableHead className={`${COL.balance} truncate`}>Balance (USD)</TableHead>
                   <TableHead className={`${COL.ccy} truncate`}>CCY</TableHead>
                 </TableRow>
               </TableHeader>

@@ -52,15 +52,15 @@ interface OverviewRow {
 const assetKeys = ["cash_and_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities", "equities_fund", "alternative_fund", "structured_products", "loans"] as const;
 type AssetKey = (typeof assetKeys)[number];
 
-const COL_W: Record< "bank" | "account_number" | "name" | "ticker" | "isin" | "currency" | "units" | "balance", string > = {
-  bank:           "w-[10%]",
+const COL_W: Record<"bank" | "account_number" | "name" | "ticker" | "isin" | "currency" | "units" | "balance", string> = {
+  bank: "w-[10%]",
   account_number: "w-[16%]",
-  name:           "w-[30%]",
-  ticker:         "w-[8%]",
-  isin:           "w-[16%]",
-  currency:       "w-[6%]",
-  units:          "w-[6%]",
-  balance:        "w-[8%]",
+  name: "w-[30%]",
+  ticker: "w-[8%]",
+  isin: "w-[16%]",
+  currency: "w-[6%]",
+  units: "w-[6%]",
+  balance: "w-[8%]",
 };
 
 const assetLabels: Record<AssetKey, string> = {
@@ -98,7 +98,7 @@ const HOLDINGS_CACHE = new Map<string, OverviewRow[]>();
 const INFLIGHT_HOLDINGS = new Set<string>();
 
 const MONTHS_CACHE = new Map<string, string[]>();  // clientId -> ["YYYY-MM", ...]
-const INFLIGHT_MONTHS = new Set<string>();  
+const INFLIGHT_MONTHS = new Set<string>();
 
 /** map backend aliases -> canonical keys */
 const keyAliases: Record<AssetKey, string[]> = {
@@ -167,7 +167,7 @@ export default function HoldingsPage() {
       };
     });
   }, [current?.pie_chart_data]);
-  
+
   // select month 
   useEffect(() => {
     if (!effectiveClientId) return;
@@ -214,7 +214,7 @@ export default function HoldingsPage() {
 
     return () => {
       alive = false;
-      try { ctl.abort(); } catch {}
+      try { ctl.abort(); } catch { }
       INFLIGHT_MONTHS.delete(key);
     };
   }, [effectiveClientId]);
@@ -274,7 +274,7 @@ export default function HoldingsPage() {
 
     return () => {
       alive = false;
-      try { controller.abort(); } catch {}
+      try { controller.abort(); } catch { }
       INFLIGHT_HOLDINGS.delete(key);
     };
   }, [effectiveClientId, monthsReady, months, selMonth]);
@@ -295,10 +295,10 @@ export default function HoldingsPage() {
           typeof (r as any).balanceUsd === "number"
             ? (r as any).balanceUsd
             : typeof (r as any).balance_usd === "number"
-            ? (r as any).balance_usd
-            : typeof (r as any).balance === "number"
-            ? (r as any).balance
-            : 0
+              ? (r as any).balance_usd
+              : typeof (r as any).balance === "number"
+                ? (r as any).balance
+                : 0
         ),
       ]);
       return { columns, body, title: assetLabels[key] };
@@ -434,8 +434,8 @@ export default function HoldingsPage() {
   ];
 
   return (
-      <div className="flex flex-col gap-4">
-        {status === "ready" && selMonth && !hasHoldings && (
+    <div className="flex flex-col gap-4">
+      {status === "ready" && selMonth && !hasHoldings && (
         <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-3">
           No holdings for <span className="font-medium">{selMonth}</span>.
           {months.length > 0 && (
@@ -461,7 +461,7 @@ export default function HoldingsPage() {
           })()}
         </div>
       )}
-      
+
       {/* Pies */}
       {SHOW_PIES && pieCards.map((meta, idx) => {
         const ds = pieDataSets[idx];
@@ -606,7 +606,7 @@ export default function HoldingsPage() {
                     <TableHead className={`${COL_W.isin} truncate`}>ISIN</TableHead>
                     <TableHead className={`${COL_W.currency} truncate`}>Currency</TableHead>
                     <TableHead className={`${COL_W.units} truncate`}>Units</TableHead>
-                    <TableHead className={`${COL_W.balance} truncate text-right`}>Balance</TableHead>
+                    <TableHead className={`${COL_W.balance} truncate text-right`}>Balance (USD)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -620,12 +620,12 @@ export default function HoldingsPage() {
                       typeof r?.balanceUsd === "number"
                         ? fmtCurrency(r.balanceUsd)
                         : typeof r?.balance_usd === "number"
-                        ? fmtCurrency(r.balance_usd)
-                        : typeof r?.balance === "number"
-                        ? fmtCurrency(r.balance)
-                        : typeof r?.balance_in_currency === "number"
-                        ? `${r?.currency ?? ""} ${fmtNumberSmart(r.balance_in_currency)}`
-                        : "—";
+                          ? fmtCurrency(r.balance_usd)
+                          : typeof r?.balance === "number"
+                            ? fmtCurrency(r.balance)
+                            : typeof r?.balance_in_currency === "number"
+                              ? `${r?.currency ?? ""} ${fmtNumberSmart(r.balance_in_currency)}`
+                              : "—";
 
                     return (
                       <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
