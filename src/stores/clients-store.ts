@@ -1,3 +1,4 @@
+// src/stores/clients-store.ts
 import axios from "axios";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -33,8 +34,11 @@ export interface ClientSummary {
 export interface Client {
   id: string;
   name: string;
+  /** Not used by dashboard now; keep for compatibility */
   pieChartData: PieChartData | null;
   summary?: ClientSummary;
+  /** Per-custodian net exposure for dashboard tree */
+  by_bank?: { bank: string; net_usd: number }[];
   news: News | null;
   alerts: Alerts | null;
   overviews: Overview[];
@@ -51,7 +55,7 @@ interface ClientState {
   deleteClient: (id: string) => void;
   updateClient: (id: string, partial: Partial<Omit<Client, "id">>) => void;
 
-  // ⬇️ NEW: patch fields under client.summary (used by the Profile edit dialogs)
+  // Patch fields under client.summary (used by profile edit dialogs)
   updateClientSummary: (id: string, patch: Record<string, any>) => void;
 
   loadClients: () => Promise<void>;
@@ -86,6 +90,7 @@ export const useClientStore = create<ClientState>()(
           name,
           pieChartData: null,
           summary: {},
+          by_bank: [],
           news: null,
           alerts: null,
           overviews: [],
@@ -142,7 +147,6 @@ export const useClientStore = create<ClientState>()(
         }
       },
 
-      // ⬇️ NEW: local patch for summary fields (no API call needed)
       updateClientSummary: (id, patch) =>
         set((state) => {
           const prev = state.clients[id];
@@ -158,7 +162,7 @@ export const useClientStore = create<ClientState>()(
           };
         }),
 
-      // ---------- UPDATED: pulls from API, then (optionally) merges /mocks/clients.json ----------
+      // Load clients for the logged-in user
       loadClients: async () => {
         const { id: user_id } = useUserStore.getState();
         if (!user_id) {
@@ -169,7 +173,7 @@ export const useClientStore = create<ClientState>()(
 
         let apiList: any[] = [];
         try {
-          // ✅ use internal Next route; only the logged-in user’s clients are returned
+          // Internal Next route; returns { clients: [...] } from set-based SQL
           const res = await axios.get("/api/clients", { params: { user_id } });
           apiList = res.data?.clients ?? [];
         } catch (e) {
@@ -182,12 +186,13 @@ export const useClientStore = create<ClientState>()(
           const order: string[] = [];
 
           for (const row of apiList) {
-            const { id, name, pieChartData, summary } = row;
+            const { id, name, summary, by_bank } = row;
             clients[String(id)] = {
               id: String(id),
               name,
-              pieChartData: pieChartData ?? null,
+              pieChartData: null, // no longer needed by dashboard
               summary: summary ?? {},
+              by_bank: Array.isArray(by_bank) ? by_bank : [],
               news: null,
               alerts: null,
               overviews: [],
@@ -203,6 +208,6 @@ export const useClientStore = create<ClientState>()(
         if (typeof window !== "undefined") localStorage.removeItem("clients-storage");
       },
     }),
-    { name: "clients-storage", version: 3 }
+    { name: "clients-storage", version: 4 } // bump version since structure changed (added by_bank)
   )
 );

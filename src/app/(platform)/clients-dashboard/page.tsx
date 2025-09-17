@@ -133,31 +133,23 @@ export default function ClientManagementPage() {
   const clients: NodeData[] = useMemo(() => {
     return order.map((id) => {
       const c = storeClients[id];
-      const pie = c.pieChartData;
 
-      // Default values
-      let total = 0;
-      let children: NodeData[] = [];
+      const byBank = Array.isArray(c.by_bank) ? c.by_bank : [];
+      const total = byBank.reduce((acc, x) => acc + (Number(x?.net_usd) || 0), 0);
 
-      if (pie && Array.isArray(pie.charts)) {
-        const aum = pie.charts.find((ch) => ch.title === "AUM_ratio") ?? pie.charts[0];
-        if (aum) {
-          total = aum.data.reduce((acc: number, v: number) => acc + v, 0);
-          children = aum.labels.map((label: string, idx: number) => ({
-            id: `${id}-bank-${idx}`,
-            type: "entity",
-            name: label,
-            value: fmtCurrency2(aum.data[idx] ?? 0), // ⬅️ 2dp
-            children: [],
-          }));
-        }
-      }
+      const children: NodeData[] = byBank.map((row, idx) => ({
+        id: `${id}-bank-${idx}`,
+        type: "entity",
+        name: row.bank ?? "—",
+        value: fmtCurrency2(row.net_usd ?? 0), // 2dp
+        children: [],
+      }));
 
       return {
         id,
         type: "client",
         name: c.name,
-        value: fmtCurrency2(total), // ⬅️ 2dp
+        value: fmtCurrency2(total), // total by banks, 2dp
         children,
       } as NodeData;
     });

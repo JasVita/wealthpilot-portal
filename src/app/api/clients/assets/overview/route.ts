@@ -1,3 +1,43 @@
+// Latest snapshot (legacy month mode)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29'
+
+// Explicit month (May 2025)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&year=2025&month=5'
+
+// “To only” → everything up to and including 2025-04-30 (all custodians)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&to=2025-04-30'
+
+// Range → 2025-04-01 .. 2025-05-31 (all custodians)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&from=2025-04-01&to=2025-05-31'
+
+// Custodian (case-insensitive) + “to only” → UOB up to 2025-04-30
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=uob&to=2025-04-30'
+
+// Custodian + “to only” → Standard Chartered up to 2025-04-30
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=Standard%20Chartered&to=2025-04-30'
+
+// Custodian + “to only” → Bank of Singapore up to 2025-05-31
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=Bank%20of%20Singapore&to=2025-05-31'
+
+// Account (auto-resolves bank) + “to only” → UOB acct 88-10101-18 up to 2025-04-30
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&account=88-10101-18&to=2025-04-30'
+
+// Account (auto-resolves bank) + “to only” → Standard Chartered acct 550051-1 up to 2025-04-30
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&account=550051-1&to=2025-04-30'
+
+// Account (auto-resolves bank) + “to only” → Bank of Singapore acct 10-1001-001715148 up to 2025-05-31
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&account=10-1001-001715148&to=2025-05-31'
+
+// Custodian + Account + “to only” (redundant but explicit) → UOB acct 88-10101-18 up to 2025-04-30
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=UOB&account=88-10101-18&to=2025-04-30'
+
+// “From only” → everything from 2025-03-01 onward (server fills to=9999-12-31)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&from=2025-03-01'
+
+// Full range with Other custodian (example)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=Other&from=2025-03-01&to=2025-05-31'
+
+// Example with a different client (44) and explicit month (kept from your original format)
 // curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=44&year=2025&month=7'
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
