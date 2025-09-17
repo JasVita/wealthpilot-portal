@@ -1,4 +1,4 @@
-// curl -s 'http://localhost:3001/api/clients/filters?client_id=44'
+// curl -s 'http://localhost:3001/api/clients/filters?client_id=29'
 // curl -s 'http://localhost:3001/api/clients/filters?client_id=44&custodian=UBS'
 // src/app/api/clients/filters/route.ts
 import { NextRequest, NextResponse } from "next/server";

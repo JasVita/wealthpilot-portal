@@ -1,5 +1,7 @@
 // src/app/api/clients/route.ts
-// curl -s 'http://localhost:3001/api/clients?user_id=10'
+// curl -s 'http://localhost:3001/api/clients?user_id=1'
+// curl -s 'http://localhost:3001/api/clients?user_id=1&date_to=2025-05-31'
+// curl -s 'http://localhost:3001/api/clients?user_id=1&custodian=Bank+of+Singapore&date_to=2025-05-31'
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
