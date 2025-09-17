@@ -1,4 +1,5 @@
 // src/lib/format.ts
+import type { CSSProperties } from "react";
 
 /** Safely coerce any input to a finite number */
 const toNum = (v: unknown) => {
@@ -90,6 +91,18 @@ export const sameDay = (a?: Date | null, b?: Date | null): boolean => {
     a.getDate() === b.getDate()
   );
 };
+
+// Reusable CSS line clamp (works in Chromium/WebKit; needs a bounded width)
+export const lineClamp = (lines: number): React.CSSProperties => ({
+  display: "-webkit-box",
+  WebkitLineClamp: lines,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+  textOverflow: "ellipsis",   // ← ensures ellipsis rendering where supported
+  wordBreak: "break-word",
+  overflowWrap: "anywhere",   // long tokens (UUIDs, filenames) still break
+});
+
 
 /** HSL→HEX */
 function hslToHex(h: number, s: number, l: number) {

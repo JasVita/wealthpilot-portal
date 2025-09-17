@@ -8,6 +8,8 @@ import { usePathname, useParams } from "next/navigation";
 import { useEffect, useMemo, useState, createContext, useCallback, useRef } from "react";
 import axios from "axios";
 import { useClientStore } from "@/stores/clients-store";
+import { useCustodianStore } from "@/stores/custodian-store";
+import { useClientFiltersStore } from "@/stores/client-filters-store";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -136,6 +138,8 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, currClient } = useClientStore();
+  const { selected: selectedCustodian } = useCustodianStore();
+  const { fromDate, toDate } = useClientFiltersStore();
 
   useEffect(() => {
     if (clientId) setCurrClient(clientId);
@@ -154,9 +158,17 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     (async () => {
       setStatus("loading");
       try {
-        const { data } = await axios.get("/api/clients/assets/overview", {
-          params: { client_id: currClient },
-        });
+        // const { data } = await axios.get("/api/clients/assets/overview", { params: { client_id: currClient }, });
+        const from = fromDate ?? toDate ?? null;
+        const to   = toDate   ?? fromDate ?? null;
+        const cust = selectedCustodian && selectedCustodian !== "ALL" ? selectedCustodian : undefined;
+
+        const params: any = { client_id: currClient };
+        if (cust) params.custodian = cust;
+        if (from && to) { params.from = from; params.to = to; }
+
+        const { data } = await axios.get("/api/clients/assets/overview", { params });
+
         const rows: OverviewRow[] = Array.isArray(data?.overview_data) ? data.overview_data : [];
         setOverviews(rows);
         setCards(data?.computed?.cards ?? null);
@@ -173,7 +185,8 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         setStatus("ready");
       }
     })();
-  }, [currClient]);
+  // }, [currClient]);
+  }, [currClient, selectedCustodian, fromDate, toDate]);
 
   const current = overviews[0];
 

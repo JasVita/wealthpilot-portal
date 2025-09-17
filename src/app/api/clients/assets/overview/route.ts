@@ -12,14 +12,10 @@ type BankBlock = Record<string, any> & {
   as_of_date?: string | null;
 };
 
-function paletteLocal(n: number) {
-  // OPTIONAL: If you prefer the project-wide palette directly, remove this and use palette(n).
-  return palette(n);
-}
+const poolPromise = Promise.resolve().then(() => getPool());
 
-/** Find recent months that have documents */
 async function getRecentMonths(clientId: number, limit = 12): Promise<Array<{ y: number; m: number }>> {
-  const pool = getPool();
+  const pool = await poolPromise;
   const q = await pool.query<{ y: number; m: number }>(
     `
     with mon as (
@@ -41,7 +37,7 @@ async function getRecentMonths(clientId: number, limit = 12): Promise<Array<{ y:
 }
 
 async function fetchMonthTableData(clientId: number, y: number, m: number) {
-  const pool = getPool();
+  const pool = await poolPromise;
   const q = await pool.query<{ data: any }>(
     "select public.get_month_overview_aggregated($1,$2,$3)::jsonb as data",
     [clientId, y, m]
@@ -49,9 +45,24 @@ async function fetchMonthTableData(clientId: number, y: number, m: number) {
   return q.rows?.[0]?.data ?? { tableData: [] };
 }
 
-/** Build chart datasets and also return granular totals we’ll reuse for cards/breakdown */
+async function fetchRangeTableData(
+  clientId: number,
+  fromISO: string,
+  toISO: string,
+  custodian: string | null,
+  account: string | null
+) {
+  const pool = await poolPromise;
+  const q = await pool.query<{ data: any }>(
+    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
+    [clientId, fromISO, toISO, custodian, account]
+  );
+  return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };
+}
+
+function paletteLocal(n: number) { return palette(n); }
+
 function buildAggregates(tableData: BankBlock[]) {
-  // BANK AUM (include both legacy and new keys)
   const bankTotals = new Map<string, number>();
   tableData.forEach((b) => {
     const total =
@@ -72,7 +83,6 @@ function buildAggregates(tableData: BankBlock[]) {
   const bankLabels = Array.from(bankTotals.keys());
   const bankData = bankLabels.map((k) => bankTotals.get(k) || 0);
 
-  // ASSET BUCKET TOTALS
   const buckets: Array<[string, string[]]> = [
     ["Cash And Equivalents", ["cash_and_equivalents", "cash_equivalents"]],
     ["Direct Fixed Income", ["direct_fixed_income"]],
@@ -94,22 +104,11 @@ function buildAggregates(tableData: BankBlock[]) {
   const assetLabels = buckets.map(([pretty]) => pretty);
   const assetData = assetLabels.map((k) => assetTotals.get(k) || 0);
 
-  // CURRENCY SPLIT
   const ccyTotals = new Map<string, number>();
   tableData.forEach((b) => {
     for (const k of [
-      "cash_equivalents",
-      "cash_and_equivalents",
-      "direct_fixed_income",
-      "fixed_income_funds",
-      "direct_equities",
-      "equities_fund",
-      "equity_funds",
-      "alternative_fund",
-      "alternative_funds",
-      "structured_product",
-      "structured_products",
-      "loans",
+      "cash_equivalents","cash_and_equivalents","direct_fixed_income","fixed_income_funds","direct_equities",
+      "equities_fund","equity_funds","alternative_fund","alternative_funds","structured_product","structured_products","loans",
     ]) {
       for (const r of rowsOf((b as any)[k])) {
         const c = (r?.currency ?? "USD").toString();
@@ -122,15 +121,11 @@ function buildAggregates(tableData: BankBlock[]) {
   const ccyLabels = ccySorted.map(([k]) => k);
   const ccyData = ccySorted.map(([, v]) => v);
 
-  // CARDS
-  const grossAssets = assetLabels
-    .filter((l) => l !== "Loans")
-    .reduce((a, l) => a + (assetTotals.get(l) || 0), 0);
+  const grossAssets = assetLabels.filter((l) => l !== "Loans").reduce((a, l) => a + (assetTotals.get(l) || 0), 0);
   const loans = assetTotals.get("Loans") || 0;
   const netAssets = grossAssets + loans;
   const aumFromBanks = bankData.reduce((a, b) => a + b, 0);
 
-  // Breakdown with 2dp
   const breakdown: Record<string, number> = {};
   for (const l of assetLabels) breakdown[l] = r2(assetTotals.get(l) || 0);
 
@@ -152,10 +147,71 @@ export async function POST(req: NextRequest) {
     const month = intOrUndef(body?.month);
     const monthDate: string | undefined = body?.month_date;
 
+    // optional filters
+    const custodian: string | null = (body?.custodian ?? null) || null;
+    const account: string | null =
+      (typeof body?.account === "string" && body.account.trim() && body.account !== "ALL") ? body.account.trim() : null;
+
+    // “to-only” and “from-only” support
+    const fromISO: string | null = body?.from ?? body?.date_from ?? null;
+    const toISO: string | null   = body?.to   ?? body?.date_to   ?? null;
+
     if (!clientId) {
       return NextResponse.json({ status: "error", message: "client_id is required" }, { status: 400 });
     }
 
+    // RANGE MODE when any bound is provided
+    if (fromISO || toISO) {
+      const fromEff = fromISO ?? "1900-01-01";
+      const toEff   = toISO   ?? "9999-12-31";
+      const data = await fetchRangeTableData(clientId, fromEff, toEff, custodian, account);
+      const tableDataArr: BankBlock[] = Array.isArray(data?.tableData) ? data.tableData : [];
+      const agg = buildAggregates(tableDataArr);
+
+      // Trend: build months between bounds
+      const start = new Date(fromEff + "T00:00:00Z");
+      const end   = new Date(toEff   + "T00:00:00Z");
+      const months: { y: number; m: number }[] = [];
+      const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+      while (d <= end) {
+        months.push({ y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 });
+        d.setUTCMonth(d.getUTCMonth() + 1);
+      }
+      const trend = [];
+      for (const cand of months) {
+        const td = await fetchMonthTableData(clientId, cand.y, cand.m);
+        let arr: BankBlock[] = Array.isArray(td?.tableData) ? td.tableData : [];
+        if (custodian) {
+          const ci = custodian.toLowerCase();
+          arr = arr.filter((b) => (b.bank ?? "").toString().toLowerCase() === ci);
+        }
+        if (account) {
+          arr = arr.filter((b) => (b.account_number ?? "") === account);
+        }
+        const t = buildAggregates(arr);
+        const label = new Date(Date.UTC(cand.y, cand.m - 1, 1)).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+        trend.push({ y: cand.y, m: cand.m, label, net_assets: r2(t.totals.netAssets) });
+      }
+
+      return NextResponse.json({
+        status: "ok",
+        overview_data: [
+          { month_date: toEff, pie_chart_data: { charts: agg.charts }, table_data: { tableData: tableDataArr } }
+        ],
+        computed: {
+          cards: {
+            total_assets: r2(agg.totals.grossAssets),
+            total_liabilities: r2(agg.totals.loans),
+            net_assets: r2(agg.totals.netAssets),
+            aum_from_banks: r2(agg.totals.aumFromBanks),
+          },
+          breakdown: agg.totals.breakdown,
+          trend
+        }
+      });
+    }
+
+    // LEGACY SINGLE-MONTH MODE
     let y = year, m = month;
     if (monthDate && (!y || !m)) {
       const d = new Date(monthDate);
@@ -174,20 +230,35 @@ export async function POST(req: NextRequest) {
     }
     if (!tableData) tableData = await fetchMonthTableData(clientId, sel.y, sel.m);
 
-    const month_date = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
-    const tableDataArr: BankBlock[] = Array.isArray(tableData?.tableData) ? tableData.tableData : [];
+    // filter by custodian/account if provided
+    let tableDataArr: BankBlock[] = Array.isArray(tableData?.tableData) ? tableData.tableData : [];
+    if (custodian) {
+      const ci = custodian.toLowerCase();
+      tableDataArr = tableDataArr.filter((b) => (b.bank ?? "").toString().toLowerCase() === ci);
+    }
+    if (account) {
+      tableDataArr = tableDataArr.filter((b) => (b.account_number ?? "") === account);
+    }
 
     const agg = buildAggregates(tableDataArr);
 
     const trend = [];
     for (const cand of months) {
       const td = await fetchMonthTableData(clientId, cand.y, cand.m);
-      const arr: BankBlock[] = Array.isArray(td?.tableData) ? td.tableData : [];
+      let arr: BankBlock[] = Array.isArray(td?.tableData) ? td.tableData : [];
+      if (custodian) {
+        const ci = custodian.toLowerCase();
+        arr = arr.filter((b) => (b.bank ?? "").toString().toLowerCase() === ci);
+      }
+      if (account) {
+        arr = arr.filter((b) => (b.account_number ?? "") === account);
+      }
       const t = buildAggregates(arr);
       const label = new Date(Date.UTC(cand.y, cand.m - 1, 1)).toLocaleDateString("en-US", { month: "short", year: "numeric" });
       trend.push({ y: cand.y, m: cand.m, label, net_assets: r2(t.totals.netAssets) });
     }
 
+    const month_date = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
     return NextResponse.json({
       status: "ok",
       overview_data: [
@@ -216,10 +287,23 @@ export async function GET(req: NextRequest) {
   const year = intOrUndef(sp.get("year"));
   const month = intOrUndef(sp.get("month"));
   const month_date = sp.get("month_date") || undefined;
+
+  const custodian = sp.get("custodian");
+  const accountParam = sp.get("account");
+  const account =
+    accountParam && accountParam !== "ALL" && accountParam.trim().length ? accountParam.trim() : null;
+
+  const from = sp.get("from") ?? sp.get("date_from");
+  const to   = sp.get("to")   ?? sp.get("date_to");
+
+  const body: any = { client_id, year, month, month_date, custodian, account };
+  if (from) body.from = from;
+  if (to) body.to = to;
+
   return POST(
     new NextRequest(req.url, {
       method: "POST",
-      body: JSON.stringify({ client_id, year, month, month_date }),
+      body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
     })
   );
