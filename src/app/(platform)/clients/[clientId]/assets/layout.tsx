@@ -1,3 +1,4 @@
+// src/app/(platform)/clients/[clientId]/assets/layout.tsx
 "use client";
 
 import clsx from "clsx";
@@ -47,7 +48,7 @@ ChartJS.register(
   ChartDataLabels
 );
 
-export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => { });
+export const AssetsExportContext = createContext<(fn?: () => void) => void>(() => {});
 
 const TABS = [
   { slug: "holdings", label: "Holdings" },
@@ -139,7 +140,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const { clientId } = useParams<{ clientId: string }>();
   const { setCurrClient, currClient } = useClientStore();
   const { selected: selectedCustodian } = useCustodianStore();
-  const { fromDate, toDate } = useClientFiltersStore();
+  const { fromDate, toDate, account } = useClientFiltersStore();
 
   useEffect(() => {
     if (clientId) setCurrClient(clientId);
@@ -153,40 +154,67 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
   const [trendApi, setTrendApi] = useState<{ label: string; net_assets: number }[] | null>(null);
   const [breakdownApi, setBreakdownApi] = useState<Record<string, number> | null>(null);
 
+  // ---- dedupe / cancellation guards
+  const lastKeyRef = useRef<string>("");
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (!currClient) return;
-    (async () => {
-      setStatus("loading");
-      try {
-        // const { data } = await axios.get("/api/clients/assets/overview", { params: { client_id: currClient }, });
-        const from = fromDate ?? toDate ?? null;
-        const to   = toDate   ?? fromDate ?? null;
-        const cust = selectedCustodian && selectedCustodian !== "ALL" ? selectedCustodian : undefined;
 
-        const params: any = { client_id: currClient };
-        if (cust) params.custodian = cust;
-        if (from && to) { params.from = from; params.to = to; }
+    // IMPORTANT: when switching to a custodian or account, the header first clears dates,
+    // then /filters sets the proper "To" date. Skip the transient "no dates yet" state
+    // so we don't fetch twice & flash the screen.
+    const waitingForDates =
+      (
+        (selectedCustodian && selectedCustodian !== "ALL") ||
+        (account && account !== "ALL")
+      ) && !fromDate && !toDate;
 
-        const { data } = await axios.get("/api/clients/assets/overview", { params });
+    if (waitingForDates) return;
 
+    // Build request params from global filters
+    const params: Record<string, any> = { client_id: currClient };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+    if (fromDate) params.from = fromDate;
+    if (toDate)   params.to   = toDate;
+
+    // Dedupe identical requests
+    const key = JSON.stringify(params);
+    if (key === lastKeyRef.current) return;
+    lastKeyRef.current = key;
+
+    setStatus("loading");
+
+    // Cancel any in-flight request
+    if (abortRef.current) abortRef.current.abort();
+    const ctr = new AbortController();
+    abortRef.current = ctr;
+
+    axios
+      .get("/api/clients/assets/overview", { params, signal: ctr.signal as any })
+      .then(({ data }) => {
         const rows: OverviewRow[] = Array.isArray(data?.overview_data) ? data.overview_data : [];
         setOverviews(rows);
         setCards(data?.computed?.cards ?? null);
         setTrendApi(Array.isArray(data?.computed?.trend) ? data.computed.trend : null);
         setBreakdownApi(data?.computed?.breakdown ?? null);
-        if (!rows.length) throw new Error("No overview data");
         setStatus("ready");
-      } catch (err: any) {
-        setErrorMsg(err?.message || "Unknown error");
+      })
+      .catch((err) => {
+        if ((err as any)?.name === "CanceledError" || (err as any)?.message === "canceled") return;
+        setErrorMsg((err as any)?.message || "Unknown error");
         setOverviews([]);
         setCards(null);
         setTrendApi(null);
         setBreakdownApi(null);
         setStatus("ready");
-      }
-    })();
-  // }, [currClient]);
-  }, [currClient, selectedCustodian, fromDate, toDate]);
+      });
+
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, [currClient, selectedCustodian, fromDate, toDate, account]);
 
   const current = overviews[0];
 
@@ -282,6 +310,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     doc.save("assets.pdf");
   }, [current, pieDataSets, tableForPdf]);
 
+  // KPI (fallback if server didn't send cards; your server does, so this is just a safety net)
   const kpis = useMemo(() => {
     const rows = Object.values(aggregatedTables).flat();
     let assets = 0;
@@ -298,7 +327,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     return { assets, liabilities: liabilitiesAbs, netAssets: net, aumFromPie };
   }, [aggregatedTables, current]);
 
-  // KPI format: exact 2 decimals
   const kpiValues = useMemo(() => {
     return {
       totalAssets: fmtCurrency2(cards ? cards.total_assets : kpis.assets),
@@ -308,14 +336,23 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     };
   }, [cards, kpis]);
 
-  const bucketChips = useMemo(() => {
+  // Breakdown quick view (client-side fallback or server)
+  const breakdownChips = useMemo(() => {
+    if (breakdownApi) {
+      return Object.entries(breakdownApi).map(([key, total]) => ({
+        key,
+        label: key,
+        total: Number(total) || 0,
+      }));
+    }
     return assetKeys.map((k) => {
-      const rows = aggregatedTables[k] || [];
-      const total = rows.reduce((a, r) => a + (Number((r as any)?.balanceUsd ?? 0) || 0), 0);
-      return { key: k, label: assetLabels[k], count: rows.length, total };
+      const rows = (aggregatedTables[k] || []) as any[];
+      const total = rows.reduce((a, r) => a + (Number(r?.balanceUsd ?? 0) || 0), 0);
+      return { key: k, label: assetLabels[k], total };
     });
-  }, [aggregatedTables]);
+  }, [breakdownApi, aggregatedTables]);
 
+  // Trend (server preferred)
   const trend = useMemo(() => {
     if (trendApi && trendApi.length) {
       const labels = trendApi.map((t) => t.label);
@@ -332,31 +369,6 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     );
     return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
   }, [trendApi, overviews]);
-
-  // Build Breakdown chips from API or fallback, then sort DESC by absolute value
-  const breakdownChips = useMemo(() => {
-    let items:
-      | { key: string; label: string; count?: number; total: number }[]
-      | undefined;
-
-    if (breakdownApi) {
-      items = Object.entries(breakdownApi).map(([label, total]) => ({
-        key: label,
-        label,
-        total: Number(total) || 0,
-      }));
-    } else {
-      items = assetKeys.map((k) => {
-        const rows = aggregatedTables[k] || [];
-        const total = rows.reduce((a, r) => a + (Number((r as any)?.balanceUsd ?? 0) || 0), 0);
-        return { key: k, label: assetLabels[k], total };
-      });
-    }
-
-    if (!items) return [];
-    // sort by absolute value (DESC) so zeros sink to the end
-    return items.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
-  }, [breakdownApi, aggregatedTables]);
 
   const lineOptions = useMemo(() => {
     const values = (trend?.datasets?.[0]?.data as number[]) ?? [];
@@ -562,11 +574,11 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
           </>
         )}
 
-        {status === "ready" && !overviews.length && errorMsg && (
+        {status === "ready" && !overviews.length && (
           <Alert variant="destructive" className="mt-4">
             <AlertCircleIcon className="h-5 w-5" />
             <AlertTitle>Note</AlertTitle>
-            <AlertDescription>{errorMsg}</AlertDescription>
+            <AlertDescription>{errorMsg || "No data available for the selected filters."}</AlertDescription>
           </Alert>
         )}
       </div>

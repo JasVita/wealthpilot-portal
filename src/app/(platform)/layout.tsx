@@ -43,11 +43,8 @@ type ClientFiltersResponse = {
   periods: string[];
   min_date: string | null;
   max_date: string | null;
-  /** Added by DB function */
   accounts?: string[];
-  /** Optional richer map (not required here but kept for future use) */
   custodian_map?: { bank: string; accounts: string[] }[];
-  /** Bank to auto-select when account is provided */
   selected_custodian?: string | null;
 };
 
@@ -76,15 +73,26 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   const [custodians, setCustodians] = useState<string[]>([]);
   const [activeCustodianSet, setActiveCustodianSet] = useState<Set<string>>(new Set());
   const { selected: selectedCustodian, setSelected: setSelectedCustodian } = useCustodianStore();
-  const { periods, fromDate, toDate, setPeriods, setFromDate, setToDate, reset } = useClientFiltersStore();
+
+  // periods + dates + account (GLOBAL store)
+  const {
+    periods,
+    fromDate,
+    toDate,
+    setPeriods,
+    setFromDate,
+    setToDate,
+    account,          // ⬅️ selected account (global)
+    setAccount,       // ⬅️ setter
+    reset,
+  } = useClientFiltersStore();
 
   // Map + hint from /filters
   const [custodianMap, setCustodianMap] = useState<{ bank: string; accounts: string[] }[]>([]);
   const [selectedCustodianFromFilter, setSelectedCustodianFromFilter] = useState<string | null>(null);
 
-  // NEW: accounts (for the current selection) + chosen account
+  // List of accounts for the current selection (remains local list for the dropdown)
   const [accounts, setAccounts] = useState<string[]>([]);
-  const [account, setAccount] = useState<string>("ALL");
 
   // race guard for /filters fetches
   const loadIdRef = useRef(0);
@@ -268,21 +276,18 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
     setFromDate(null);
   };
 
-  // Account selection
+  // Account selection (GLOBAL)
   const handleAccountChange = (acc: string) => {
-    setAccount(acc);
+    setAccount(acc || "ALL");
     // The filters effect will fetch with ?account=... and auto-switch custodian via selected_custodian
   };
 
   function handleCustodianChange(next: string) {
     setSelectedCustodian(next);
-    // reset account when switching custodian
     setAccount("ALL");
-    // ALL → clear dates immediately
-    if (next === "ALL") {
-      setFromDate(null);
-      setToDate(null);
-    }
+    // Always clear the old range; the filters effect will set the proper To later
+    setFromDate(null);
+    setToDate(null);
   }
 
   // upload logic
@@ -430,7 +435,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
                   </SelectContent>
                 </Select>
 
-                {/* Account (NEW, placed where From used to be) */}
+                {/* Account (GLOBAL) */}
                 <Separator orientation="vertical" className="mx-2 h-4" />
                 <span className="text-sm text-muted-foreground">Account:</span>
                 <Select value={account} onValueChange={handleAccountChange}>
@@ -470,7 +475,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
                 </Select>
                 */}
 
-                {/* To (kept) */}
+                {/* Up To Date */}
                 <Separator orientation="vertical" className="mx-2 h-4" />
                 <span className="text-sm text-muted-foreground">Up To Date:</span>
                 <Select value={toDate ?? undefined} onValueChange={handleToChange}>
