@@ -1,3 +1,4 @@
+// src/app/(platform)/clients/[clientId]/assets/custodian/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,7 +8,7 @@ import { useClientStore } from "@/stores/clients-store";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Landmark, CircleHelp } from "lucide-react";
-import { fmtCurrency, fmtShortUSD } from "@/lib/format"; 
+import { fmtCurrency, fmtShortUSD } from "@/lib/format";
 
 import {
   Chart as ChartJS,
@@ -22,9 +23,12 @@ import {
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import { Bar } from "react-chartjs-2";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useClientFiltersStore } from "@/stores/client-filters-store";
+import { useCustodianStore } from "@/stores/custodian-store";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, CJTitle, ChartTooltip, Legend, ChartDataLabels);
 
+/* ---------------- API ----------------------------------------------------- */
 type CashApi = {
   status: "ok" | "error";
   month_date: string | null;
@@ -38,9 +42,10 @@ type CashApi = {
   };
 };
 
-/* ---------------- helpers for the Accounts panel ---------------- */
+/* ---------------- helpers for the Accounts panel ------------------------- */
 type AccRow = { bank: string; account: string; amount: number; pct?: number };
 type Chip = { currency: string; amount: number };
+
 const OVERDRAFT = (n: number) => n < 0;
 const NON_TRIVIAL = (n: number, min = 1_000) => Math.abs(n) >= min;
 
@@ -53,7 +58,8 @@ function groupByBank(
   for (const r of rows) {
     if (!NON_TRIVIAL(r.amount, minCut)) continue;
     const key = r.bank;
-    const chips = (curMap.get(`${r.bank}|${r.account}`) ?? []).slice()
+    const chips = (curMap.get(`${r.bank}|${r.account}`) ?? [])
+      .slice()
       .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
     if (!byBank.has(key)) byBank.set(key, { total: 0, items: [] });
     const bucket = byBank.get(key)!;
@@ -68,15 +74,19 @@ function groupByBank(
   return banks;
 }
 
-function Chips({ chips }: { chips: Chip[] }) {
-  if (!chips.length) return null;
-  const top = chips.slice(0, 3);
+/* ---------------- Chips with expandable “+N more” ------------------------ */
+function Chips({ chips, initiallyExpanded = false }: { chips: Chip[]; initiallyExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(initiallyExpanded);
+  if (!chips?.length) return null;
+
+  const top = expanded ? chips : chips.slice(0, 3);
   const rest = chips.slice(3);
+
   return (
     <div className="mt-2 flex flex-wrap gap-1">
       {top.map((c) => (
         <span
-          key={c.currency}
+          key={`${c.currency}-${c.amount}`}
           className={
             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs " +
             (c.amount < 0 ? "bg-rose-50 text-rose-700" : "bg-slate-100")
@@ -87,19 +97,41 @@ function Chips({ chips }: { chips: Chip[] }) {
           <span className="font-semibold">{fmtCurrency(c.amount, 2)}</span>
         </span>
       ))}
-      {rest.length > 0 && (
-        <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
+
+      {!expanded && rest.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
+          aria-label={`Show ${rest.length} more currencies`}
+        >
           +{rest.length} more
-        </span>
+        </button>
+      )}
+
+      {expanded && rest.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100 ml-1"
+          aria-label="Show less"
+        >
+          show less
+        </button>
       )}
     </div>
   );
 }
-/* ---------------------------------------------------------------- */
+
+/* ------------------------------------------------------------------------ */
 
 export default function CustodianPage() {
   const { currClient } = useClientStore();
   const searchParams = useSearchParams();
+
+  // global header filters
+  const { selected: selectedCustodian } = useCustodianStore();
+  const { fromDate, toDate, account } = useClientFiltersStore();
 
   // ✅ Default to "currency" when there is no ?mode=
   const urlMode = (searchParams?.get("mode") || "currency").toLowerCase();
@@ -120,15 +152,18 @@ export default function CustodianPage() {
 
   const [data, setData] = useState<CashApi | null>(null);
 
+  // Single, filter-aware fetch (removes previous duplicate effect)
   useEffect(() => {
     if (!currClient) return;
-    (async () => {
-      const { data } = await axios.get<CashApi>("/api/clients/assets/custodian", {
-        params: { client_id: currClient },
-      });
-      setData(data);
-    })();
-  }, [currClient]);
+
+    const params: any = { client_id: currClient };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+    if (fromDate) params.from = fromDate;
+    if (toDate) params.to = toDate;
+
+    axios.get<CashApi>("/api/clients/assets/custodian", { params }).then(({ data }) => setData(data));
+  }, [currClient, selectedCustodian, fromDate, toDate, account]);
 
   const total = data?.totals?.grand_total ?? 0;
 
@@ -287,7 +322,11 @@ export default function CustodianPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input className="h-8 w-44 rounded border px-2 text-sm" placeholder="Find account or bank…" onChange={(e) => setQuery(e.target.value)}/>
+                  <input
+                    className="h-8 w-44 rounded border px-2 text-sm"
+                    placeholder="Find account or bank…"
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -318,7 +357,7 @@ export default function CustodianPage() {
                           </div>
                         </summary>
 
-                        {/* Bank-level currency summary chips (mirror stacked) */}
+                        {/* Bank-level currency summary chips (only in "all" stacked view) */}
                         {mode === "all" && (
                           <Chips
                             chips={Array.from(
@@ -340,7 +379,9 @@ export default function CustodianPage() {
                                   <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-indigo-50">
                                     <Landmark className="h-4 w-4 text-indigo-600" />
                                   </span>
-                                  <div className="text-sm text-primary">{r.bank} {r.account}</div>
+                                  <div className="text-sm text-primary">
+                                    {r.bank} {r.account}
+                                  </div>
                                 </div>
                                 <Chips chips={r.chips} />
                               </div>
@@ -368,7 +409,8 @@ export default function CustodianPage() {
                   return base
                     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
                     .map((r) => {
-                      const chips = (accountCurrencyMap.get(`${r.bank}|${r.account}`) ?? []).slice()
+                      const chips = (accountCurrencyMap.get(`${r.bank}|${r.account}`) ?? [])
+                        .slice()
                         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
                       return (
                         <div key={`${r.bank}|${r.account}`} className="flex items-start justify-between rounded-lg border p-3">
@@ -377,7 +419,9 @@ export default function CustodianPage() {
                               <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-indigo-50">
                                 <Landmark className="h-4 w-4 text-indigo-600" />
                               </span>
-                              <div className="text-sm text-primary">{r.bank} {r.account}</div>
+                              <div className="text-sm text-primary">
+                                {r.bank} {r.account}
+                              </div>
                             </div>
                             <Chips chips={chips} />
                           </div>

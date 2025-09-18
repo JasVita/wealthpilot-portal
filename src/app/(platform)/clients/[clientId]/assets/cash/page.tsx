@@ -60,19 +60,47 @@ function groupByBank(
     bucket.total += r.amount;
     bucket.items.push({ ...r, chips });
   }
+
+  // sort banks by total, and accounts within banks
   const banks = Array.from(byBank.entries()).map(([bank, v]) => ({ bank, total: v.total, items: v.items }));
   banks.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   banks.forEach((b) => b.items.sort((a, c) => Math.abs(c.amount) - Math.abs(a.amount)));
   return banks;
 }
 
-function Chips({ chips }: { chips: Chip[] }) {
+/** Expandable chip list. Click the “+N more / show less” or pass expanded=true to force open. */
+function Chips({
+  chips,
+  initialLimit = 3,
+  expanded,
+  onExpandedChange,
+}: {
+  chips: Chip[];
+  initialLimit?: number;
+  expanded?: boolean;
+  onExpandedChange?: (next: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isControlled = typeof expanded === "boolean";
+  const showAll = isControlled ? !!expanded : open;
+
+  const shown = showAll ? chips : chips.slice(0, initialLimit);
+  const rest = chips.length - shown.length;
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation(); // don’t bubble to parent row click
+    if (isControlled) {
+      onExpandedChange?.(!expanded);
+    } else {
+      setOpen((v) => !v);
+    }
+  };
+
   if (!chips.length) return null;
-  const top = chips.slice(0, 3);
-  const rest = chips.slice(3);
+
   return (
     <div className="mt-2 flex flex-wrap gap-1">
-      {top.map((c) => (
+      {shown.map((c) => (
         <span
           key={c.currency}
           className={
@@ -85,11 +113,75 @@ function Chips({ chips }: { chips: Chip[] }) {
           <span className="font-semibold">{fmtCurrency(c.amount, 2)}</span>
         </span>
       ))}
-      {rest.length > 0 && (
-        <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
-          +{rest.length} more
-        </span>
+
+      {rest > 0 && (
+        <button
+          type="button"
+          onClick={toggle}
+          className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
+          aria-expanded={showAll}
+        >
+          {showAll ? "show less" : `+${rest} more`}
+        </button>
       )}
+    </div>
+  );
+}
+
+/** One account row with clickable expansion that also expands the Chips. */
+function AccountRow({
+  bank,
+  account,
+  amount,
+  pct,
+  chips,
+}: {
+  bank: string;
+  account: string;
+  amount: number;
+  pct?: number;
+  chips: Chip[];
+}) {
+  const [open, setOpen] = useState(false);
+  const overdraft = OVERDRAFT(amount);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setOpen((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }
+      }}
+      className="flex items-start justify-between rounded border p-2 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+      aria-expanded={open}
+    >
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-indigo-50">
+            <Landmark className="h-4 w-4 text-indigo-600" />
+          </span>
+          <div className="text-sm text-primary">
+            {bank} {account}
+          </div>
+        </div>
+
+        {/* Chips expand if row is open; toggle button in Chips also works */}
+        <Chips chips={chips} expanded={open} onExpandedChange={setOpen} />
+      </div>
+
+      <div className={"text-right ml-4 " + (overdraft ? "text-rose-600" : "")}>
+        <div className="text-sm font-semibold">{fmtCurrency(amount, 2)}</div>
+        <div className="text-xs text-muted-foreground">
+          {typeof pct === "number" ? `${pct.toFixed(2)}%` : ""}
+          {overdraft && (
+            <span className="ml-2 rounded bg-rose-50 px-1 py-0.5 text-[10px] text-rose-700">overdraft</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -283,7 +375,11 @@ export default function CashPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input className="h-8 w-44 rounded border px-2 text-sm" placeholder="Find account or bank…" onChange={(e) => setQuery(e.target.value)}/>                  
+                  <input
+                    className="h-8 w-44 rounded border px-2 text-sm"
+                    placeholder="Find account or bank…"
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -330,26 +426,14 @@ export default function CashPage() {
 
                         <div className="mt-2 space-y-2">
                           {b.items.map((r) => (
-                            <div key={r.account} className="flex items-start justify-between rounded border p-2">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-indigo-50">
-                                    <Landmark className="h-4 w-4 text-indigo-600" />
-                                  </span>
-                                  <div className="text-sm text-primary">{r.bank} {r.account}</div>
-                                </div>
-                                <Chips chips={r.chips} />
-                              </div>
-                              <div className={"text-right ml-4 " + (OVERDRAFT(r.amount) ? "text-rose-600" : "")}>
-                                <div className="text-sm font-semibold">{fmtCurrency(r.amount, 2)}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {totalPos > 0 ? ((Math.max(r.amount, 0) / totalPos) * 100).toFixed(2) : "0.00"}%
-                                  {OVERDRAFT(r.amount) && (
-                                    <span className="ml-2 rounded bg-rose-50 px-1 py-0.5 text-[10px] text-rose-700">overdraft</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                            <AccountRow
+                              key={r.account}
+                              bank={r.bank}
+                              account={r.account}
+                              amount={r.amount}
+                              pct={totalPos > 0 ? (Math.max(r.amount, 0) / totalPos) * 100 : 0}
+                              chips={r.chips}
+                            />
                           ))}
                         </div>
                       </details>
@@ -367,26 +451,14 @@ export default function CashPage() {
                       const chips = (accountCurrencyMap.get(`${r.bank}|${r.account}`) ?? []).slice()
                         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
                       return (
-                        <div key={`${r.bank}|${r.account}`} className="flex items-start justify-between rounded-lg border p-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-indigo-50">
-                                <Landmark className="h-4 w-4 text-indigo-600" />
-                              </span>
-                              <div className="text-sm text-primary">{r.bank} {r.account}</div>
-                            </div>
-                            <Chips chips={chips} />
-                          </div>
-                          <div className={"text-right ml-4 " + (OVERDRAFT(r.amount) ? "text-rose-600" : "")}>
-                            <div className="text-sm font-semibold">{fmtCurrency(r.amount, 2)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {totalPos > 0 ? ((Math.max(r.amount, 0) / totalPos) * 100).toFixed(2) : "0.00"}%
-                              {OVERDRAFT(r.amount) && (
-                                <span className="ml-2 rounded bg-rose-50 px-1 py-0.5 text-[10px] text-rose-700">overdraft</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                        <AccountRow
+                          key={`${r.bank}|${r.account}`}
+                          bank={r.bank}
+                          account={r.account}
+                          amount={r.amount}
+                          pct={totalPos > 0 ? (Math.max(r.amount, 0) / totalPos) * 100 : 0}
+                          chips={chips}
+                        />
                       );
                     });
                 })()}
