@@ -1,410 +1,208 @@
+// src/app/(platform)/clients/[clientId]/assets/holdings/page.tsx
 "use client";
+
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useCallback, useContext } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useMemo, useRef, useState, useContext } from "react";
+import axios from "axios";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { UsersRound } from "lucide-react";
-import { Doughnut } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-  Title,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-} from "chart.js";
-import ChartDataLabels from "chartjs-plugin-datalabels";
-import axios from "axios";
+
 import { useClientStore } from "@/stores/clients-store";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { logRoute, pill } from "@/lib/dev-logger";
+import { useCustodianStore } from "@/stores/custodian-store";
+import { useClientFiltersStore } from "@/stores/client-filters-store";
 import { AssetsExportContext } from "../layout";
 
-ChartJS.register(
-  ArcElement,
-  Tooltip,
-  Legend,
-  Title,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Filler,
-  ChartDataLabels
-);
+type OverviewRow = {
+  month_date: string | null;
+  table_data: { tableData: any[] };
+  pie_chart_data: { charts: any[] };
+};
 
-interface OverviewRow {
-  month_date: string;
-  table_data: any;
-  pie_chart_data: {
-    charts: { data: number[]; labels: string[]; colors: string[]; title: string }[];
-  };
-}
-
-const assetKeys = ["cash_and_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities", "equities_fund", "alternative_fund", "structured_products", "loans"] as const;
+const assetKeys = [
+  "cash_equivalents",
+  "direct_fixed_income",
+  "fixed_income_funds",
+  "direct_equities",
+  "equities_fund",
+  "alternative_fund",
+  "structured_product",
+  "loans",
+] as const;
 type AssetKey = (typeof assetKeys)[number];
 
-const COL_W: Record<"bank" | "account_number" | "name" | "ticker" | "isin" | "currency" | "units" | "balance", string> = {
+const assetLabels: Record<AssetKey, string> = {
+  cash_equivalents:   "Cash & Equivalents",
+  direct_fixed_income:"Direct Fixed Income",
+  fixed_income_funds: "Fixed Income Funds",
+  direct_equities:    "Direct Equities",
+  equities_fund:      "Equity Funds",
+  alternative_fund:   "Alternative Funds",
+  structured_product: "Structured Products",
+  loans:              "Loans",
+};
+
+// tolerate legacy keys
+const keyAliases: Record<AssetKey, string[]> = {
+  cash_equivalents:   ["cash_equivalents", "cash_and_equivalents"],
+  direct_fixed_income:["direct_fixed_income"],
+  fixed_income_funds: ["fixed_income_funds"],
+  direct_equities:    ["direct_equities"],
+  equities_fund:      ["equities_fund", "equity_funds"],
+  alternative_fund:   ["alternative_fund", "alternative_funds"],
+  structured_product: ["structured_product", "structured_products"],
+  loans:              ["loans"],
+};
+
+const COL_W: Record<
+  "bank" | "account_number" | "name" | "ticker" | "isin" | "currency" | "units" | "balance" | "price",
+  string
+> = {
   bank: "w-[10%]",
   account_number: "w-[16%]",
   name: "w-[30%]",
   ticker: "w-[8%]",
-  isin: "w-[16%]",
+  isin: "w-[14%]",
   currency: "w-[6%]",
-  units: "w-[6%]",
+  units: "w-[8%]",
   balance: "w-[8%]",
+  price: "w-[8%]",
 };
 
-const assetLabels: Record<AssetKey, string> = {
-  cash_and_equivalents: "Cash & Equivalents",
-  direct_fixed_income: "Direct Fixed Income",
-  fixed_income_funds: "Fixed Income Funds",
-  direct_equities: "Direct Equities",
-  equities_fund: "Equity Funds",
-  alternative_fund: "Alternative Funds",
-  structured_products: "Structured Products",
-  loans: "Loans",
-};
-
-const fmtCurrency = (v: number) => {
-  const hasCents = Number.isFinite(v) && Math.round((v * 100) % 100) !== 0;
-  return new Intl.NumberFormat("en-US", {
+const fmtCurrency = (v: number) =>
+  new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: hasCents ? 2 : 0,
-    maximumFractionDigits: hasCents ? 2 : 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(v || 0);
-};
 
-// (optional) for non-USD plain numbers like balance_in_currency
 const fmtNumberSmart = (v: number) => {
-  const hasCents = Number.isFinite(v) && Math.round((v * 100) % 100) !== 0;
-  return (v ?? 0).toLocaleString("en-US", {
+  const hasCents = Math.round((v * 100) % 100) !== 0;
+  return v.toLocaleString("en-US", {
     minimumFractionDigits: hasCents ? 2 : 0,
-    maximumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 4 : 0,
   });
-};
-
-const pct = (value: number, total: number, digits = 0) => total > 0 ? `${((value / total) * 100).toFixed(digits)}%` : "0%";
-const HOLDINGS_CACHE = new Map<string, OverviewRow[]>();
-const INFLIGHT_HOLDINGS = new Set<string>();
-
-const MONTHS_CACHE = new Map<string, string[]>();  // clientId -> ["YYYY-MM", ...]
-const INFLIGHT_MONTHS = new Set<string>();
-
-/** map backend aliases -> canonical keys */
-const keyAliases: Record<AssetKey, string[]> = {
-  cash_and_equivalents: ["cash_equivalents", "cash_equivalent"],
-  direct_fixed_income: ["directFixedIncome", "direct_fixed_income"],
-  fixed_income_funds: ["fixedIncomeFunds", "fixed_income_funds"],
-  direct_equities: ["directEquities", "direct_equities"],
-  equities_fund: ["equityFunds", "equities_fund", "equity_funds"],
-  alternative_fund: ["alternativeFunds", "alternative_fund", "alternative_funds"],
-  structured_products: ["structured_product"],
-  loans: ["loans"],
 };
 
 export default function HoldingsPage() {
   const { currClient } = useClientStore();
   const { clientId: routeClientId } = useParams<{ clientId: string }>();
-
-  // Use store id if present; otherwise fall back to the route param during the first render
   const effectiveClientId = (currClient ?? routeClientId ?? "").toString();
+
+  // global filters
+  const { selected: selectedCustodian } = useCustodianStore();
+  const { toDate, account } = useClientFiltersStore();
+
   const registerExport = useContext(AssetsExportContext);
 
-  const [overviews, setOverviews] = useState<OverviewRow[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "ready">("idle");
-  const chartRefs = useRef<Record<number, ChartJS | null>>({});
-  const SHOW_PIES = false;
+  const [errorMsg, setErrorMsg] = useState("");
+  const [overview, setOverview] = useState<OverviewRow | null>(null);
 
-  /** latest month (first row from API/mocks) */
-  const current = overviews[0] ?? null;
-  const [months, setMonths] = useState<string[]>([]);
-  const [selMonth, setSelMonth] = useState<string | null>(null);
-  const [monthsReady, setMonthsReady] = useState(false);
-  const [emptyMonths, setEmptyMonths] = useState<Set<string>>(new Set());
+  // dedupe + cancel
+  const lastKeyRef = useRef<string>("");
+  const abortRef = useRef<AbortController | null>(null);
 
+  useEffect(() => {
+    if (!effectiveClientId) return;
+
+    // avoid transient fetch while header is snapping "To"
+    const waitingForTo =
+      ((selectedCustodian && selectedCustodian !== "ALL") || (account && account !== "ALL")) && !toDate;
+    if (waitingForTo) return;
+
+    const params: Record<string, any> = { client_id: effectiveClientId };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+    if (toDate) params.to = toDate;
+
+    const key = JSON.stringify(params);
+    if (key === lastKeyRef.current) return;
+    lastKeyRef.current = key;
+
+    setStatus("loading");
+    if (abortRef.current) abortRef.current.abort();
+    const ctr = new AbortController();
+    abortRef.current = ctr;
+
+    axios
+      .get("/api/clients/assets/holdings", { params, signal: ctr.signal as any })
+      .then(({ data }) => {
+        const row = (Array.isArray(data?.overview_data) ? data.overview_data[0] : null) as OverviewRow | null;
+        setOverview(row ?? null);
+        setStatus("ready");
+      })
+      .catch((err) => {
+        if ((err as any)?.name === "CanceledError" || (err as any)?.message === "canceled") return;
+        setErrorMsg((err as any)?.message || "Unknown error");
+        setOverview(null);
+        setStatus("error");
+      });
+
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, [effectiveClientId, selectedCustodian, account, toDate]);
+
+  const current = overview;
+
+  // group rows by bucket
   const aggregatedTables = useMemo(() => {
-    const acc: Record<AssetKey, any[]> = Object.fromEntries(assetKeys.map((k) => [k, []])) as any;
-    const banks: any[] = (current?.table_data?.tableData ?? (current as any)?.tableData ?? []);
-    banks.forEach((bank: any) => {
-      assetKeys.forEach((k) => {
+    const acc = Object.fromEntries(assetKeys.map((k) => [k, [] as any[]])) as Record<AssetKey, any[]>;
+    const banks = current?.table_data?.tableData ?? [];
+    for (const bank of banks) {
+      for (const k of assetKeys) {
         const alias = keyAliases[k].find((a) => bank[a] !== undefined);
-        if (!alias) return;
+        if (!alias) continue;
         const block = bank[alias];
         const rows = Array.isArray(block) ? block : Array.isArray(block?.rows) ? block.rows : [];
-        rows.forEach((row: any) => acc[k].push({ bank: bank.bank, account_number: bank.account_number ?? "—", ...row }));
-      });
-    });
+        for (const r of rows) {
+          acc[k].push({
+            bank: bank.bank ?? "—",
+            account_number: bank.account_number ?? "—",
+            ...r,
+          });
+        }
+      }
+    }
     return acc;
   }, [current]);
 
-  // build pie datasets defensively
-  const pieDataSets = useMemo(() => {
-    if (!current?.pie_chart_data?.charts) return [];
-    return current.pie_chart_data.charts.map((c: any) => {
-      const data: number[] = Array.isArray(c?.data) ? c.data : [];
-      const colors: string[] = Array.isArray(c?.colors) ? c.colors : [];
-      const labels: string[] =
-        Array.isArray(c?.labels) && c.labels.length === data.length ? c.labels : data.map((_, i) => `Item ${i + 1}`);
-      return {
-        labels,
-        datasets: [
-          {
-            data,
-            backgroundColor: colors.length === data.length ? colors : undefined,
-            borderWidth: 0,
-          },
-        ],
-      };
-    });
-  }, [current?.pie_chart_data]);
-
-  // select month 
-  useEffect(() => {
-    if (!effectiveClientId) return;
-
-    setMonthsReady(false);
-    const key = effectiveClientId;
-
-    // serve cached months instantly
-    const cached = MONTHS_CACHE.get(key);
-    if (cached) {
-      setMonths(cached);
-      setSelMonth((prev) => (prev && cached.includes(prev) ? prev : cached[0] ?? null));
-      setMonthsReady(true);
-      return;
-    }
-
-    // de-dupe in-flight
-    if (INFLIGHT_MONTHS.has(key)) return;
-    INFLIGHT_MONTHS.add(key);
-
-    const ctl = new AbortController();
-    let alive = true;
-
-    (async () => {
-      try {
-        const { data } = await axios.get("/api/clients/assets/holdings/months", {
-          params: { client_id: key },
-          signal: ctl.signal as any,
-        });
-        if (!alive) return;
-        const list: string[] = Array.isArray(data?.months) ? data.months : [];
-        MONTHS_CACHE.set(key, list);
-        setMonths(list);
-        setSelMonth(list.length ? list[0] : null);
-      } catch {
-        if (!alive) return;
-        setMonths([]);
-        setSelMonth(null);
-      } finally {
-        INFLIGHT_MONTHS.delete(key);
-        if (alive) setMonthsReady(true);
-      }
-    })();
-
-    return () => {
-      alive = false;
-      try { ctl.abort(); } catch { }
-      INFLIGHT_MONTHS.delete(key);
-    };
-  }, [effectiveClientId]);
-
-
-  // fetch overviews when client or month changes
-  useEffect(() => {
-    if (!effectiveClientId) return;
-
-    // wait until months resolved – prevents the "auto" POST before selMonth exists
-    if (!monthsReady) return;
-
-    const wantAuto = months.length === 0;     // client truly has no months
-    if (!wantAuto && !selMonth) return;       // months exist but nothing selected yet
-
-    const key = `${effectiveClientId}:${wantAuto ? "auto" : selMonth}`;
-
-    const cached = HOLDINGS_CACHE.get(key);
-    if (cached) {
-      setOverviews(cached);
-      setStatus("ready");
-    } else {
-      setOverviews([]);
-      setStatus("loading");
-    }
-
-    if (INFLIGHT_HOLDINGS.has(key)) return;
-    INFLIGHT_HOLDINGS.add(key);
-
-    const controller = new AbortController();
-    let alive = true;
-
-    (async () => {
-      try {
-        const payload: any = { client_id: effectiveClientId };
-        if (!wantAuto && selMonth) {
-          const [y, m] = selMonth.split("-").map(Number);
-          payload.year = y; payload.month = m;
-        }
-        const { data } = await axios.post("/api/clients/assets/holdings", payload, {
-          signal: controller.signal as any,
-        });
-        if (!alive) return;
-        logRoute("/overviews", data);
-        const rows: OverviewRow[] = Array.isArray(data) ? data : data?.overview_data ?? [];
-        HOLDINGS_CACHE.set(key, rows || []);
-        setOverviews(rows || []);
-      } catch {
-        if (!alive) return;
-        if (!cached) setOverviews([]);
-      } finally {
-        INFLIGHT_HOLDINGS.delete(key);
-        if (alive) setStatus("ready");
-        console.log(...pill("network", "#475569"), "live");
-      }
-    })();
-
-    return () => {
-      alive = false;
-      try { controller.abort(); } catch { }
-      INFLIGHT_HOLDINGS.delete(key);
-    };
-  }, [effectiveClientId, monthsReady, months, selMonth]);
-
-  // PDF helpers (unchanged)
-  const tableForPdf = useCallback(
-    (key: AssetKey) => {
-      const columns = ["Bank", "Account", "Name", "Ticker", "ISIN", "Currency", "Units", "Balance (USD)"];
-      const body = (aggregatedTables[key] ?? []).map((r) => [
-        (r as any).bank,
-        (r as any).account_number ?? "—",
-        (r as any).name ?? "",
-        (r as any).ticker ?? "—",
-        (r as any).isin ?? "—",
-        (r as any).currency ?? "",
-        (r as any).units ?? "",
-        fmtCurrency(
-          typeof (r as any).balanceUsd === "number"
-            ? (r as any).balanceUsd
-            : typeof (r as any).balance_usd === "number"
-              ? (r as any).balance_usd
-              : typeof (r as any).balance === "number"
-                ? (r as any).balance
-                : 0
-        ),
-      ]);
-      return { columns, body, title: assetLabels[key] };
-    },
-    [aggregatedTables]
-  );
-
-
-  const handleDownloadPdf = useCallback(async () => {
-    if (!current) return;
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let y = 40;
-
-    doc.setFontSize(18).text("Client Assets", pageWidth / 2, y, { align: "center" });
-    y += 24;
-    doc.setFontSize(12).text(
-      `Reporting Month: ${new Date(current.month_date).toLocaleDateString("en-US", { year: "numeric", month: "long" })}`,
-      pageWidth / 2,
-      y,
-      { align: "center" }
-    );
-    y += 32;
-
-    await Promise.all(
-      [0, 1, 2].map(async (idx) => {
-        const chart = chartRefs.current[idx];
-        // @ts-ignore
-        const img = chart?.toBase64Image?.() || "";
-        if (!img) return;
-        doc.addImage(img, "PNG", 45, y, pageWidth - 90, 180, undefined, "FAST");
-        y += 200;
-        if (idx === 1) {
-          doc.addPage();
-          y = 40;
-        }
-      })
-    );
-
-    for (const key of assetKeys) {
-      const { columns, body, title } = tableForPdf(key);
-      if (!body.length) continue;
-      doc.addPage();
-      autoTable(doc, {
-        head: [columns],
-        body,
-        startY: 60,
-        margin: { left: 32, right: 32 },
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [40, 40, 40] },
-        didDrawPage: () => {
-          doc.setFontSize(14).text(title, 32, 40);
-        },
-      });
-    }
-
-    doc.save("assets.pdf");
-  }, [current, tableForPdf]);
-
-  useEffect(() => {
-    registerExport(() => {
-      void handleDownloadPdf();
-    });
-    return () => registerExport(undefined);
-  }, [registerExport, handleDownloadPdf]);
-
-  // ---- Tabs (same look as other pages) ----
+  // visible tabs and active tab
   const visibleAssetKeys: AssetKey[] = useMemo(
     () => assetKeys.filter((k) => (aggregatedTables[k] ?? []).length > 0),
     [aggregatedTables]
   );
-  const [activeAssetTab, setActiveAssetTab] = useState<AssetKey>("cash_and_equivalents");
-
+  const [activeAssetTab, setActiveAssetTab] = useState<AssetKey>("cash_equivalents");
   useEffect(() => {
     if (!visibleAssetKeys.length) return;
-    if (!visibleAssetKeys.includes(activeAssetTab)) {
-      setActiveAssetTab(visibleAssetKeys[0]);
-    }
+    if (!visibleAssetKeys.includes(activeAssetTab)) setActiveAssetTab(visibleAssetKeys[0]);
   }, [visibleAssetKeys, activeAssetTab]);
 
-  const selectedRows = useMemo(
+  const rows = useMemo(
     () => (visibleAssetKeys.length ? aggregatedTables[activeAssetTab] ?? [] : []),
     [aggregatedTables, activeAssetTab, visibleAssetKeys]
   );
 
-  const hasHoldings = visibleAssetKeys.length > 0;
-
+  // optional export hook
   useEffect(() => {
-    if (status !== "ready" || !selMonth) return;
-    setEmptyMonths((prev) => {
-      const next = new Set(prev);
-      if (hasHoldings) next.delete(selMonth); else next.add(selMonth);
-      return next;
+    registerExport?.(() => {
+      /* add PDF export for holdings if needed */
     });
-  }, [status, selMonth, hasHoldings]);
+    return () => registerExport?.(undefined);
+  }, [registerExport]);
 
-  // ------------------------------- UI -------------------------------
-
+  // UI states
   if (status === "idle") {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6 text-center">
         <UsersRound className="h-10 w-10 text-muted-foreground" />
         <h3 className="text-lg font-semibold">No client selected</h3>
         <p className="max-w-md text-sm text-muted-foreground">
-          Choose an existing client from the sidebar — or create a new one to start uploading statements and generating
-          portfolio overviews.
+          Choose a client from the sidebar — or create a new one to start uploading statements.
         </p>
       </div>
     );
@@ -423,129 +221,14 @@ export default function HoldingsPage() {
     );
   }
 
-  if (!overviews.length) {
-    return <p className="p-6 text-muted-foreground">No consolidated data found for this client yet.</p>;
+  if (status === "error" || !current) {
+    return <p className="p-6 text-muted-foreground">{errorMsg || "No holdings for the selected filters."}</p>;
   }
 
-  const pieCards = [
-    { title: "Bank Exposure", description: "Holdings across different banks" },
-    { title: "Asset Breakdown", description: "Allocation by asset class" },
-    { title: "Currency Exposure", description: "Exposure by currency" },
-  ];
+  const hasHoldings = visibleAssetKeys.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
-      {status === "ready" && selMonth && !hasHoldings && (
-        <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-3">
-          No holdings for <span className="font-medium">{selMonth}</span>.
-          {months.length > 0 && (
-            <button
-              type="button"
-              className="underline underline-offset-2 hover:text-foreground"
-              onClick={() => setSelMonth(months[0])}
-            >
-              Jump to latest
-            </button>
-          )}
-          {(() => {
-            const idx = months.indexOf(selMonth);
-            return idx >= 0 && idx < months.length - 1 ? (
-              <button
-                type="button"
-                className="underline underline-offset-2 hover:text-foreground"
-                onClick={() => setSelMonth(months[idx + 1])}
-              >
-                Previous month
-              </button>
-            ) : null;
-          })()}
-        </div>
-      )}
-
-      {/* Pies */}
-      {SHOW_PIES && pieCards.map((meta, idx) => {
-        const ds = pieDataSets[idx];
-        if (!ds) return null;
-
-        const total = (ds.datasets?.[0]?.data as number[] | undefined)?.reduce((a, b) => a + b, 0) ?? 0;
-        const showPct = meta.title === "Asset Breakdown" || meta.title === "Currency Exposure";
-
-        return (
-          <Card key={meta.title}>
-            <CardHeader>
-              <CardTitle>{meta.title}</CardTitle>
-              <CardDescription>{meta.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="flex items-center justify-center">
-                  <div className="w-[260px] h-[260px]">
-                    <Doughnut
-                      data={ds}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: {
-                          legend: { display: false },
-                          datalabels: {
-                            color: "#fff",
-                            font: { weight: "bold" },
-                            formatter: (value: number, ctx: any) => {
-                              const t = ctx.dataset.data.reduce((x: number, y: number) => x + y, 0);
-                              const p = Math.round((value / t) * 100);
-                              return p >= 5 ? `${p}%` : "";
-                            },
-                          },
-                        },
-                      } as any}
-                    />
-                  </div>
-                </div>
-
-                <div className="overflow-hidden">
-                  <div className="rounded-xl border bg-card">
-                    <Table className="text-sm">
-                      <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur z-10">
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="w-1/2 uppercase tracking-wide text-[11px] text-muted-foreground">
-                            {meta.title === "Bank Exposure"
-                              ? "Bank"
-                              : meta.title === "Asset Breakdown"
-                                ? "Asset"
-                                : "Currency"}
-                          </TableHead>
-                          <TableHead className="w-1/4 text-right uppercase tracking-wide text-[11px] text-muted-foreground">
-                            {showPct ? "Weight" : "Value"}
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {ds.labels.map((label: string, i: number) => {
-                          const raw = (ds.datasets[0].data[i] as number) ?? 0;
-                          const val = showPct ? pct(raw, total, 0) : fmtCurrency(raw);
-                          return (
-                            <TableRow
-                              key={`${meta.title}-${label}-${i}`}
-                              className="hover:bg-muted/40 border-b last:border-0"
-                            >
-                              <TableCell className="whitespace-nowrap py-3">{label}</TableCell>
-                              <TableCell className="whitespace-nowrap py-3 text-right">{val}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      }
-
-      )}
-
-      {/* Sticky tabs — only when we actually have holdings */}
       {hasHoldings && (
         <div
           className="sticky z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b -mt-px"
@@ -553,15 +236,9 @@ export default function HoldingsPage() {
         >
           <div className="px-4">
             <Tabs value={activeAssetTab} onValueChange={(v) => setActiveAssetTab(v as AssetKey)} className="w-full">
-              {/* xl: 8 in one row; md–xl: 4+4; <md: 2 per row */}
               <TabsList className="grid w-full gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
                 {visibleAssetKeys.map((k) => (
-                  <TabsTrigger
-                    key={k}
-                    value={k}
-                    title={assetLabels[k]}
-                    className="min-w-0 truncate text-xs md:text-sm px-3 py-2"
-                  >
+                  <TabsTrigger key={k} value={k} title={assetLabels[k]} className="min-w-0 truncate text-xs md:text-sm px-3 py-2">
                     {assetLabels[k]}
                   </TabsTrigger>
                 ))}
@@ -571,102 +248,84 @@ export default function HoldingsPage() {
         </div>
       )}
 
-      {/* Period selector (YYYY-MM) — show even if this month is empty */}
-      {months.length > 0 && (
-        <div className="px-4 flex items-center gap-3">
-          <div className="text-sm text-muted-foreground">Period</div>
-          <Select value={selMonth ?? undefined} onValueChange={setSelMonth}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Select period" />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((ym) => (
-                <SelectItem key={ym} value={ym}>
-                  {ym}{emptyMonths.has(ym) ? " (empty)" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-
-      {/* Asset table — only when we actually have holdings */}
-      {hasHoldings && (
+      {hasHoldings ? (
         <div className="px-4">
-          {selectedRows.length ? (
-            <div className="rounded-md border overflow-hidden">
-              <Table className="text-sm table-fixed w-full">
-                <TableHeader className="bg-background">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className={`${COL_W.bank} truncate`}>Bank</TableHead>
-                    <TableHead className={`${COL_W.account_number} truncate`}>Account</TableHead>
-                    <TableHead className={`${COL_W.name} truncate`}>Name</TableHead>
-                    <TableHead className={`${COL_W.ticker} truncate`}>Ticker</TableHead>
-                    <TableHead className={`${COL_W.isin} truncate`}>ISIN</TableHead>
-                    <TableHead className={`${COL_W.currency} truncate`}>Currency</TableHead>
-                    <TableHead className={`${COL_W.units} truncate`}>Units</TableHead>
-                    <TableHead className={`${COL_W.balance} truncate text-right`}>Balance (USD)</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedRows.map((r: any, i: number) => {
-                    const units =
-                      typeof r?.units === "number"
-                        ? r.units.toLocaleString("en-US", { maximumFractionDigits: 4 })
-                        : r?.units ?? "—";
+          <div className="rounded-md border overflow-hidden">
+            <Table className="text-sm table-fixed w-full">
+              <TableHeader className="bg-background">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className={`${COL_W.bank} truncate`}>Bank</TableHead>
+                  <TableHead className={`${COL_W.account_number} truncate`}>Account</TableHead>
+                  <TableHead className={`${COL_W.name} truncate`}>Name</TableHead>
+                  <TableHead className={`${COL_W.ticker} truncate`}>Ticker</TableHead>
+                  <TableHead className={`${COL_W.isin} truncate`}>ISIN</TableHead>
+                  <TableHead className={`${COL_W.currency} truncate`}>Currency</TableHead>
+                  <TableHead className={`${COL_W.units} truncate`}>Units</TableHead>
+                  <TableHead className={`${COL_W.balance} truncate text-right`}>Balance (USD)</TableHead>
+                  <TableHead className={`${COL_W.price} truncate text-right`}>Price</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r: any, i: number) => {
+                  const units =
+                    typeof r?.units === "number"
+                      ? r.units.toLocaleString("en-US", { maximumFractionDigits: 4 })
+                      : r?.units ?? "—";
 
-                    const balance =
-                      typeof r?.balanceUsd === "number"
-                        ? fmtCurrency(r.balanceUsd)
-                        : typeof r?.balance_usd === "number"
-                          ? fmtCurrency(r.balance_usd)
-                          : typeof r?.balance === "number"
-                            ? fmtCurrency(r.balance)
-                            : typeof r?.balance_in_currency === "number"
-                              ? `${r?.currency ?? ""} ${fmtNumberSmart(r.balance_in_currency)}`
-                              : "—";
+                  const balanceUsd =
+                    typeof r?.balance_usd === "number"
+                      ? r.balance_usd
+                      : typeof r?.balance === "number"
+                        ? r.balance
+                        : 0;
 
-                    return (
-                      <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
-                        <TableCell className={`${COL_W.bank} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.bank ?? "—"}>
-                          {r?.bank ?? "—"}
-                        </TableCell>
-                        <TableCell className={`${COL_W.account_number} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.account_number ?? "—"}>
-                          {r?.account_number ?? "—"}
-                        </TableCell>
-                        <TableCell className={`${COL_W.name} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.name ?? "—"}>
+                  // Price: "-" when null/undefined, "0" when exactly 0, otherwise formatted
+                  let priceOut = "—";
+                  if (r?.price !== null && r?.price !== undefined) {
+                    if (typeof r.price === "number") {
+                      priceOut = r.price === 0 ? "0" : fmtNumberSmart(r.price);
+                    } else {
+                      const n = Number(r.price);
+                      priceOut = Number.isFinite(n) ? (n === 0 ? "0" : fmtNumberSmart(n)) : "-";
+                    }
+                  }
+
+                  return (
+                    <TableRow key={`asset-row-${i}`} className="hover:bg-muted/40 border-b last:border-0">
+                      <TableCell className={`${COL_W.bank} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.bank ?? "—"}>{r?.bank ?? "—"}</TableCell>
+                      <TableCell className={`${COL_W.account_number} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.account_number ?? "—"}>{r?.account_number ?? "—"}</TableCell>
+
+                      {/* Name: outer truncation; inner clamped to 3 lines */}
+                      <TableCell className={`${COL_W.name} whitespace-nowrap overflow-hidden px-3 py-2`} title={r?.name ?? "—"}>
+                        <div
+                          className="whitespace-normal break-words text-xs md:text-[13px] leading-snug"
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                        >
                           {r?.name ?? "—"}
-                        </TableCell>
-                        <TableCell className={`${COL_W.ticker} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.ticker ?? "—"}>
-                          {r?.ticker ?? "—"}
-                        </TableCell>
-                        <TableCell className={`${COL_W.isin} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.isin ?? "—"}>
-                          {r?.isin ?? "—"}
-                        </TableCell>
-                        <TableCell className={`${COL_W.currency} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.currency ?? "—"}>
-                          {r?.currency ?? "—"}
-                        </TableCell>
-                        <TableCell className={`${COL_W.units} whitespace-nowrap overflow-hidden text-ellipsis`} title={String(units)}>
-                          {units}
-                        </TableCell>
-                        <TableCell className={`${COL_W.balance} whitespace-nowrap overflow-hidden text-ellipsis text-right tabular-nums`} title={balance}>
-                          {balance}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground py-8">
-              No rows for {assetLabels[activeAssetTab]}.
-            </div>
-          )}
-        </div>
-      )}
+                        </div>
+                      </TableCell>
 
+                      <TableCell className={`${COL_W.ticker} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.ticker ?? "—"}>{r?.ticker ?? "—"}</TableCell>
+                      <TableCell className={`${COL_W.isin} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.isin ?? "—"}>{r?.isin ?? "—"}</TableCell>
+                      <TableCell className={`${COL_W.currency} whitespace-nowrap overflow-hidden text-ellipsis`} title={r?.currency ?? "—"}>{r?.currency ?? "—"}</TableCell>
+                      <TableCell className={`${COL_W.units} whitespace-nowrap overflow-hidden text-ellipsis`} title={String(units)}>{units}</TableCell>
+                      <TableCell className={`${COL_W.balance} whitespace-nowrap overflow-hidden text-ellipsis text-right tabular-nums`} title={fmtCurrency(balanceUsd)}>{fmtCurrency(balanceUsd)}</TableCell>
+                      <TableCell className={`${COL_W.price} whitespace-nowrap overflow-hidden text-ellipsis text-right tabular-nums`} title={priceOut}>{priceOut}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-muted-foreground px-4 py-8">No holdings for the selected filters.</div>
+      )}
     </div>
   );
 }
