@@ -1,4 +1,23 @@
 // curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=44&year=2025&month=7' 
+
+// All banks, latest-per-bank snapshot (any time)
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=29'
+
+// Up to a date, all banks
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=29&to=2025-04-30'
+
+// Custodian-only (latest for that custodian)
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=29&custodian=UOB'
+
+// Custodian + up-to-date
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=29&custodian=Standard%20Chartered&to=2025-04-30'
+
+// Account-only (latest for that account)
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=29&account=550051-1'
+
+// Account + range
+// curl -s 'http://localhost:3001/api/clients/assets/custodian?client_id=29&account=550051-1&from=2025-04-01&to=2025-04-30'
+
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { intOrUndef, r2, rowsOf, palette } from "@/lib/format";
@@ -6,145 +25,123 @@ import { intOrUndef, r2, rowsOf, palette } from "@/lib/format";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type BankBlock = {
+type BankBlock = Record<string, any> & {
   bank?: string | null;
   account_number?: string | null;
-  as_of_date?: string | null;
-} & Record<string, any>;
+  as_of_date?: string | null; // 'YYYY-MM-DD'
+};
 
-/* ---------------- months / overview payload ---------------- */
-async function getRecentMonths(clientId: number, limit = 12) {
-  const pool = getPool();
-  const q = await pool.query<{ y: number; m: number }>(
-    `
-    with mon as (
-      select date_trunc('month', as_of_date)::date as mon
-      from document
-      where client_id = $1 and as_of_date is not null
-      group by 1
-      order by mon desc
-      limit $2
-    )
-    select extract(year from mon)::int as y,
-           extract(month from mon)::int as m
-    from mon
-    order by y desc, m desc
-    `,
-    [clientId, limit]
-  );
-  return q.rows ?? [];
-}
+const poolPromise = Promise.resolve().then(() => getPool());
 
-async function fetchMonthTableData(clientId: number, y: number, m: number) {
-  const pool = getPool();
+async function fetchRangeTableData(
+  clientId: number,
+  fromISO: string,
+  toISO: string,
+  custodian: string | null,
+  account: string | null
+) {
+  const pool = await poolPromise;
   const q = await pool.query<{ data: any }>(
-    "select public.get_month_overview_aggregated($1,$2,$3)::jsonb as data",
-    [clientId, y, m]
+    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
+    [clientId, fromISO, toISO, custodian, account]
   );
-  return q.rows?.[0]?.data ?? { tableData: [] };
+  return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };
 }
 
-/* ---------------- route ---------------- */
+// helpers
+const toLc = (s: string | null | undefined) => (s ?? "").toLowerCase();
+const monthKey = (d?: string | null) => (d ? String(d).slice(0, 7) : "");
+
+function latestPerBank(rows: BankBlock[]) {
+  const m = new Map<string, BankBlock>();
+  for (const r of rows) {
+    const bank = (r.bank ?? "—").toString();
+    if (!m.has(bank) || String(r.as_of_date) > String(m.get(bank)!.as_of_date)) {
+      m.set(bank, r);
+    }
+  }
+  return Array.from(m.values());
+}
+function latestSnapshot(rows: BankBlock[]) {
+  if (!rows.length) return [];
+  let max = rows[0].as_of_date ?? "";
+  for (const r of rows) if (String(r.as_of_date) > String(max)) max = String(r.as_of_date);
+  return rows.filter((r) => String(r.as_of_date) === String(max));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const clientId = intOrUndef(sp.get("client_id"));
-    let year = intOrUndef(sp.get("year"));
-    let month = intOrUndef(sp.get("month"));
-    const month_date = sp.get("month_date") || undefined;
+    if (!clientId) return NextResponse.json({ status: "error", message: "client_id is required" }, { status: 400 });
 
-    if (!clientId) {
-      return NextResponse.json({ status: "error", message: "client_id is required" }, { status: 400 });
+    const custodian = sp.get("custodian");
+    const accountParam = sp.get("account");
+    const account = accountParam && accountParam !== "ALL" && accountParam.trim().length ? accountParam.trim() : null;
+
+    const fromISO = sp.get("from") ?? sp.get("date_from");
+    const toISO   = sp.get("to")   ?? sp.get("date_to");
+
+    // 1) Get rows for range or full
+    let rows: BankBlock[] = [];
+    if (fromISO || toISO) {
+      const fromEff = fromISO ?? "1900-01-01";
+      const toEff   = toISO   ?? "9999-12-31";
+      const data = await fetchRangeTableData(clientId, fromEff, toEff, custodian, account);
+      rows = Array.isArray(data?.tableData) ? data.tableData : [];
+    } else {
+      // No dates: pull everything, then snapshot
+      const data = await fetchRangeTableData(clientId, "1900-01-01", "9999-12-31", custodian, account);
+      const allRows: BankBlock[] = Array.isArray(data?.tableData) ? data.tableData : [];
+      if (!custodian && !account)       rows = latestPerBank(allRows);
+      else if (custodian && !account)   rows = latestSnapshot(allRows.filter((r) => toLc(r.bank) === toLc(custodian)));
+      else if (account && !custodian)   rows = latestSnapshot(allRows.filter((r) => (r.account_number ?? "") === account));
+      else                              rows = latestSnapshot(allRows.filter((r) => toLc(r.bank) === toLc(custodian) && (r.account_number ?? "") === account));
     }
 
-    if (month_date && (!year || !month)) {
-      const d = new Date(month_date);
-      if (!isNaN(+d)) { year = d.getUTCFullYear(); month = d.getUTCMonth() + 1; }
-    }
+    // 2) Build splits (bank totals = net; currency & accounts = sum of row balances)
+    const ccyTotals = new Map<string, number>();
+    const bankTotals = new Map<string, number>();
+    const matrix = new Map<string, Map<string, number>>();
+    const acctTotals = new Map<string, number>();
+    const acctCurMap = new Map<string, Map<string, number>>();
 
-    const months = (!year || !month) ? await getRecentMonths(clientId, 12) : [{ y: year!, m: month! }];
-    if (!months.length) {
-      return NextResponse.json({
-        status: "ok",
-        month_date: null,
-        totals: { grand_total: 0 },
-        cash: {
-          by_currency: { labels: [], data: [], colors: [], pairs: [] },
-          by_bank: { labels: [], data: [], colors: [], pairs: [] },
-          by_account: [],
-          by_account_currency: [],
-          bank_currency: { banks: [], currencies: [], matrix: [] },
-        },
-      });
-    }
-
-    // pick the first month that actually has tableData
-    let sel = months[0];
-    let monthly = await fetchMonthTableData(clientId, sel.y, sel.m);
-    if (!Array.isArray(monthly?.tableData) || monthly.tableData.length === 0) {
-      for (const cand of months) {
-        const td = await fetchMonthTableData(clientId, cand.y, cand.m);
-        if (Array.isArray(td?.tableData) && td.tableData.length) { sel = cand; monthly = td; break; }
+    const sumBlock = (b: any) => {
+      const BUCKETS = [
+        "cash_equivalents","direct_fixed_income","fixed_income_funds","direct_equities",
+        "equities_fund","alternative_fund","structured_product","loans"
+      ];
+      // net (loans can be negative: keep sign)
+      let net = 0;
+      for (const key of BUCKETS) {
+        const rows = rowsOf(b[key]);
+        for (const r of rows) net += Number(r?.balanceUsd ?? r?.balance_usd ?? r?.balance ?? 0) || 0;
       }
-    }
-
-    const monthDateStr = new Date(Date.UTC(sel.y, sel.m - 1, 1)).toUTCString();
-    const blocks: BankBlock[] = Array.isArray(monthly?.tableData) ? monthly.tableData : [];
-
-    // recompute everything from tableData (matches overview)
-    const ccyTotals = new Map<string, number>();                     // currency  -> amount
-    const bankTotals = new Map<string, number>();                     // bank      -> net amount
-    const matrix = new Map<string, Map<string, number>>();        // bank -> (ccy -> amount)
-    const accountTotals = new Map<string, number>();                  // "bank|acct" -> amount
-    const acctCurMap = new Map<string, Map<string, number>>();      // "bank|acct" -> (ccy -> amount)
-
-    const sumCat = (cat: any) => {
-      if (!cat) return 0;
-      if (typeof cat?.subtotalUsd === "number") return Number(cat.subtotalUsd) || 0;
-      const rows = rowsOf(cat);
-      return rows.reduce((a, r) => a + (Number(r?.balanceUsd ?? r?.balance ?? 0) || 0), 0);
+      return net;
     };
 
-    for (const b of blocks) {
+    for (const b of rows) {
       const bank = (b.bank ?? "—").toString();
       const acct = (b.account_number ?? "—").toString();
       const acctKey = `${bank}|${acct}`;
 
-      // bank net (include loans — matches Net Assets / overview)
-      const net =
-        sumCat(b.loans) +
-        sumCat(b.equity_funds ?? b.equities_fund) +
-        sumCat(b.direct_equities) +
-        sumCat(b.alternative_funds ?? b.alternative_fund) +
-        sumCat(b.fixed_income_funds) +
-        sumCat(b.direct_fixed_income) +
-        sumCat(b.structured_products) +
-        sumCat(b.cash_and_equivalents);
+      // bank net
+      bankTotals.set(bank, (bankTotals.get(bank) || 0) + sumBlock(b));
 
-      bankTotals.set(bank, (bankTotals.get(bank) || 0) + net);
-
-      // currency + account splits — iterate every bucket’s rows
-      for (const key of [
-        "cash_equivalents",
-        "direct_fixed_income",
-        "fixed_income_funds",
-        "direct_equities",
-        "equities_fund",
-        "alternative_fund",
-        "structured_product",
-        "loans"
-      ]) {
+      // currency/account splits
+      for (const key of ["cash_equivalents","direct_fixed_income","fixed_income_funds","direct_equities",
+                         "equities_fund","alternative_fund","structured_product","loans"]) {
         for (const r of rowsOf((b as any)[key])) {
-          const usd = Number(r?.balanceUsd ?? r?.balance ?? 0) || 0;
+          const usd = Number(r?.balanceUsd ?? r?.balance_usd ?? r?.balance ?? 0) || 0;
           if (!usd) continue;
-          const ccy = (r?.ccy ?? r?.currency ?? "USD").toString();
+          const ccy = (r?.currency ?? r?.ccy ?? "USD").toString();
 
           ccyTotals.set(ccy, (ccyTotals.get(ccy) || 0) + usd);
 
           if (!matrix.has(bank)) matrix.set(bank, new Map());
           matrix.get(bank)!.set(ccy, (matrix.get(bank)!.get(ccy) || 0) + usd);
 
-          accountTotals.set(acctKey, (accountTotals.get(acctKey) || 0) + usd);
+          acctTotals.set(acctKey, (acctTotals.get(acctKey) || 0) + usd);
 
           if (!acctCurMap.has(acctKey)) acctCurMap.set(acctKey, new Map());
           const amap = acctCurMap.get(acctKey)!;
@@ -153,11 +150,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // shape response
+    // 3) Shape response (compatible with your Custodian page)
     const bankLabels = Array.from(bankTotals.keys());
-    const bankData = bankLabels.map((k) => r2(bankTotals.get(k) || 0));
+    const bankData   = bankLabels.map((k) => r2(bankTotals.get(k) || 0));
+
     const ccyLabels = Array.from(ccyTotals.keys());
-    const ccyData = ccyLabels.map((k) => r2(ccyTotals.get(k) || 0));
+    const ccyData   = ccyLabels.map((k) => r2(ccyTotals.get(k) || 0));
 
     const banks = bankLabels;
     const currencies = ccyLabels;
@@ -166,7 +164,7 @@ export async function GET(req: NextRequest) {
       return currencies.map((ccy) => r2(row.get(ccy) || 0));
     });
 
-    const byAccount = Array.from(accountTotals.entries())
+    const byAccount = Array.from(acctTotals.entries())
       .map(([key, amount]) => {
         const [bank, account] = key.split("|");
         return { bank, account, amount: r2(amount) };
@@ -186,8 +184,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       status: "ok",
-      month_date: monthDateStr,
-      totals: { grand_total: grand }, // == Net Assets
+      month_date: null, // not used for range mode
+      totals: { grand_total: grand },
       cash: {
         by_currency: {
           labels: ccyLabels,
@@ -205,7 +203,7 @@ export async function GET(req: NextRequest) {
         by_account_currency: byAccountCurrency,
         bank_currency: { banks, currencies, matrix: matrix2D },
       },
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[custodian route] error:", e);
     return NextResponse.json({ status: "error", message: "failed to load" }, { status: 500 });
@@ -215,10 +213,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({} as any));
   const qp = new URLSearchParams();
-  if (body.client_id != null) qp.set("client_id", String(body.client_id));
-  if (body.year != null) qp.set("year", String(body.year));
-  if (body.month != null) qp.set("month", String(body.month));
-  if (body.month_date != null) qp.set("month_date", String(body.month_date));
+  if (body.client_id  != null) qp.set("client_id",  String(body.client_id));
+  if (body.custodian  != null) qp.set("custodian",  String(body.custodian));
+  if (body.account    != null) qp.set("account",    String(body.account));
+  if (body.from       != null) qp.set("from",       String(body.from));
+  if (body.to         != null) qp.set("to",         String(body.to));
   const url = req.nextUrl.origin + "/api/clients/assets/custodian?" + qp.toString();
   return GET(new NextRequest(url));
 }
