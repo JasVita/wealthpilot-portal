@@ -477,7 +477,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
                 {/* Up To Date */}
                 <Separator orientation="vertical" className="mx-2 h-4" />
-                <span className="text-sm text-muted-foreground">Up To Date:</span>
+                <span className="text-sm text-muted-foreground">Date:</span>
                 <Select value={toDate ?? undefined} onValueChange={handleToChange}>
                   <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Select date" />

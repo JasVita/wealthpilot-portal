@@ -35,8 +35,8 @@ const poolPromise = Promise.resolve().then(() => getPool());
 
 async function fetchRangeTableData(
   clientId: number,
-  fromISO: string,
-  toISO: string,
+  fromISO: string | null,
+  toISO: string | null,
   custodian: string | null,
   account: string | null
 ) {
@@ -80,23 +80,23 @@ export async function GET(req: NextRequest) {
     const account = accountParam && accountParam !== "ALL" && accountParam.trim().length ? accountParam.trim() : null;
 
     const fromISO = sp.get("from") ?? sp.get("date_from");
-    const toISO   = sp.get("to")   ?? sp.get("date_to");
+    const toISO = sp.get("to") ?? sp.get("date_to");
 
     // 1) Get rows for range or full
     let rows: BankBlock[] = [];
     if (fromISO || toISO) {
-      const fromEff = fromISO ?? "1900-01-01";
-      const toEff   = toISO   ?? "9999-12-31";
+      const fromEff = fromISO ?? null;
+      const toEff = toISO ?? null;
       const data = await fetchRangeTableData(clientId, fromEff, toEff, custodian, account);
       rows = Array.isArray(data?.tableData) ? data.tableData : [];
     } else {
       // No dates: pull everything, then snapshot
       const data = await fetchRangeTableData(clientId, "1900-01-01", "9999-12-31", custodian, account);
       const allRows: BankBlock[] = Array.isArray(data?.tableData) ? data.tableData : [];
-      if (!custodian && !account)       rows = latestPerBank(allRows);
-      else if (custodian && !account)   rows = latestSnapshot(allRows.filter((r) => toLc(r.bank) === toLc(custodian)));
-      else if (account && !custodian)   rows = latestSnapshot(allRows.filter((r) => (r.account_number ?? "") === account));
-      else                              rows = latestSnapshot(allRows.filter((r) => toLc(r.bank) === toLc(custodian) && (r.account_number ?? "") === account));
+      if (!custodian && !account) rows = latestPerBank(allRows);
+      else if (custodian && !account) rows = latestSnapshot(allRows.filter((r) => toLc(r.bank) === toLc(custodian)));
+      else if (account && !custodian) rows = latestSnapshot(allRows.filter((r) => (r.account_number ?? "") === account));
+      else rows = latestSnapshot(allRows.filter((r) => toLc(r.bank) === toLc(custodian) && (r.account_number ?? "") === account));
     }
 
     // 2) Build splits (bank totals = net; currency & accounts = sum of row balances)
@@ -108,8 +108,8 @@ export async function GET(req: NextRequest) {
 
     const sumBlock = (b: any) => {
       const BUCKETS = [
-        "cash_equivalents","direct_fixed_income","fixed_income_funds","direct_equities",
-        "equities_fund","alternative_fund","structured_product","loans"
+        "cash_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities",
+        "equities_fund", "alternative_fund", "structured_product", "loans"
       ];
       // net (loans can be negative: keep sign)
       let net = 0;
@@ -129,8 +129,8 @@ export async function GET(req: NextRequest) {
       bankTotals.set(bank, (bankTotals.get(bank) || 0) + sumBlock(b));
 
       // currency/account splits
-      for (const key of ["cash_equivalents","direct_fixed_income","fixed_income_funds","direct_equities",
-                         "equities_fund","alternative_fund","structured_product","loans"]) {
+      for (const key of ["cash_equivalents", "direct_fixed_income", "fixed_income_funds", "direct_equities",
+        "equities_fund", "alternative_fund", "structured_product", "loans"]) {
         for (const r of rowsOf((b as any)[key])) {
           const usd = Number(r?.balanceUsd ?? r?.balance_usd ?? r?.balance ?? 0) || 0;
           if (!usd) continue;
@@ -152,10 +152,10 @@ export async function GET(req: NextRequest) {
 
     // 3) Shape response (compatible with your Custodian page)
     const bankLabels = Array.from(bankTotals.keys());
-    const bankData   = bankLabels.map((k) => r2(bankTotals.get(k) || 0));
+    const bankData = bankLabels.map((k) => r2(bankTotals.get(k) || 0));
 
     const ccyLabels = Array.from(ccyTotals.keys());
-    const ccyData   = ccyLabels.map((k) => r2(ccyTotals.get(k) || 0));
+    const ccyData = ccyLabels.map((k) => r2(ccyTotals.get(k) || 0));
 
     const banks = bankLabels;
     const currencies = ccyLabels;
@@ -213,11 +213,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({} as any));
   const qp = new URLSearchParams();
-  if (body.client_id  != null) qp.set("client_id",  String(body.client_id));
-  if (body.custodian  != null) qp.set("custodian",  String(body.custodian));
-  if (body.account    != null) qp.set("account",    String(body.account));
-  if (body.from       != null) qp.set("from",       String(body.from));
-  if (body.to         != null) qp.set("to",         String(body.to));
+  if (body.client_id != null) qp.set("client_id", String(body.client_id));
+  if (body.custodian != null) qp.set("custodian", String(body.custodian));
+  if (body.account != null) qp.set("account", String(body.account));
+  if (body.from != null) qp.set("from", String(body.from));
+  if (body.to != null) qp.set("to", String(body.to));
   const url = req.nextUrl.origin + "/api/clients/assets/custodian?" + qp.toString();
   return GET(new NextRequest(url));
 }
