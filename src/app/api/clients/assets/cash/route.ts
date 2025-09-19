@@ -50,14 +50,14 @@ async function fetchMonthTableData(clientId: number, y: number, m: number) {
 
 async function fetchRangeTableData(
   clientId: number,
-  fromISO: string,
-  toISO: string,
+  fromISO: string | null,
+  toISO: string | null,
   custodian: string | null,
   account: string | null
 ) {
   const pool = getPool();
   const q = await pool.query<{ data: any }>(
-    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
+    `select public.get_overview_range_aggregated_test($1,$2,$3,$4,$5)::jsonb as data`,
     [clientId, fromISO, toISO, custodian, account]
   );
   return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };
@@ -76,15 +76,15 @@ export async function GET(req: NextRequest) {
       scope === "cash"
         ? (["cash_equivalents"] as const)
         : ([
-            "cash_equivalents",
-            "direct_fixed_income",
-            "fixed_income_funds",
-            "direct_equities",
-            "equities_fund",
-            "alternative_fund",
-            "structured_product",
-            "loans",
-          ] as const);
+          "cash_equivalents",
+          "direct_fixed_income",
+          "fixed_income_funds",
+          "direct_equities",
+          "equities_fund",
+          "alternative_fund",
+          "structured_product",
+          "loans",
+        ] as const);
 
     const custodian = sp.get("custodian");
     const account = sp.get("account");
@@ -97,9 +97,10 @@ export async function GET(req: NextRequest) {
 
     // RANGE/FILTER PATH
     if (fromISO || toISO || custodian || account) {
-      const fromEff = fromISO ?? "1900-01-01";
-      const toEff = toISO ?? "9999-12-31";
+      const fromEff = fromISO ?? null;
+      const toEff = toISO ?? null;
       const data = await fetchRangeTableData(clientId, fromEff, toEff, custodian, account);
+      const labelDate = toISO ?? fromISO ?? null;
       const blocks: BankBlock[] = Array.isArray(data?.tableData) ? data.tableData : [];
 
       // Aggregation (cash-only when scope=cash)
@@ -173,7 +174,7 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json({
         status: "ok",
-        month_date: toEff,
+         month_date: labelDate,
         totals: { grand_total: grand },
         cash: {
           by_currency: {

@@ -39,18 +39,20 @@ const poolPromise = Promise.resolve().then(() => getPool());
 
 async function fetchRangeTableData(
   clientId: number,
-  fromISO: string,
-  toISO: string,
+  fromISO: string | null,
+  toISO: string | null,
   custodian: string | null,
   account: string | null
 ) {
   const pool = await poolPromise;
   const q = await pool.query<{ data: any }>(
-    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
+    // use your _test function while validating
+    `select public.get_overview_range_aggregated_test($1,$2,$3,$4,$5)::jsonb as data`,
     [clientId, fromISO, toISO, custodian, account]
   );
   return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };
 }
+
 
 function paletteLocal(n: number) {
   return palette(n);
@@ -220,12 +222,12 @@ export async function POST(req: NextRequest) {
 
     // independent bounds (to-only or from-only both allowed)
     const fromISO: string | null = body?.from ?? body?.date_from ?? null;
-    const toISO: string | null   = body?.to   ?? body?.date_to   ?? null;
+    const toISO: string | null = body?.to ?? body?.date_to ?? null;
 
     // ---------- RANGE MODE (any bound provided) ----------
     if (fromISO || toISO) {
-      const fromEff = fromISO ?? "1900-01-01";
-      const toEff   = toISO   ?? "9999-12-31";
+      const fromEff = fromISO ?? null;
+      const toEff = toISO ?? null;
       const data = await fetchRangeTableData(clientId, fromEff, toEff, custodian, account);
       const rows: BankBlock[] = Array.isArray(data?.tableData) ? data.tableData : [];
 
@@ -278,9 +280,9 @@ export async function POST(req: NextRequest) {
     const agg = buildAggregates(snapshot);
     const trend = buildTrendFromRows(
       (!custodian && !account) ? allRows
-      : (custodian && !account) ? allRows.filter((r) => toLc(r.bank) === toLc(custodian))
-      : (account && !custodian) ? allRows.filter((r) => (r.account_number ?? "") === account)
-      : allRows.filter((r) => toLc(r.bank) === toLc(custodian) && (r.account_number ?? "") === account)
+        : (custodian && !account) ? allRows.filter((r) => toLc(r.bank) === toLc(custodian))
+          : (account && !custodian) ? allRows.filter((r) => (r.account_number ?? "") === account)
+            : allRows.filter((r) => toLc(r.bank) === toLc(custodian) && (r.account_number ?? "") === account)
     );
 
     return NextResponse.json({
@@ -319,7 +321,7 @@ export async function GET(req: NextRequest) {
     accountParam && accountParam !== "ALL" && accountParam.trim().length ? accountParam.trim() : null;
 
   const from = sp.get("from") ?? sp.get("date_from");
-  const to   = sp.get("to")   ?? sp.get("date_to");
+  const to = sp.get("to") ?? sp.get("date_to");
 
   const body: any = { client_id, year, month, month_date, custodian, account };
   if (from) body.from = from;

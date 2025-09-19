@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import { useClientStore } from "@/stores/clients-store";
+import { useCustodianStore } from "@/stores/custodian-store";
+import { useClientFiltersStore } from "@/stores/client-filters-store";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Landmark, CircleHelp } from "lucide-react";
@@ -189,6 +191,8 @@ function AccountRow({
 
 export default function CashPage() {
   const { currClient } = useClientStore();
+  const { selected: selectedCustodian } = useCustodianStore();
+  const { fromDate, toDate, account } = useClientFiltersStore();
   const searchParams = useSearchParams();
   const urlMode = (searchParams?.get("mode") || "currency").toLowerCase(); // default Currency
 
@@ -209,14 +213,27 @@ export default function CashPage() {
 
   useEffect(() => {
     if (!currClient) return;
+
+    // When switching custodian/account the header clears dates first.
+    // Skip the transient state so we don’t fetch twice.
+    const waitingForDates =
+      ((selectedCustodian && selectedCustodian !== "ALL") ||
+      (account && account !== "ALL")) &&
+      !fromDate && !toDate;
+
+    if (waitingForDates) return;
+
+    const params: Record<string, any> = { client_id: currClient, scope: "cash" };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+    if (fromDate) params.from = fromDate;
+    if (toDate)   params.to   = toDate;
+
     (async () => {
-      // cash-only scope
-      const { data } = await axios.get<CashApi>("/api/clients/assets/cash", {
-        params: { client_id: currClient, scope: "cash" },
-      });
+      const { data } = await axios.get<CashApi>("/api/clients/assets/cash", { params });
       setData(data);
     })();
-  }, [currClient]);
+  }, [currClient, selectedCustodian, fromDate, toDate, account]);
 
   const total = data?.totals?.grand_total ?? 0;
 

@@ -1,3 +1,4 @@
+// src/app/(platform)/clients/[clientId]/assets/analysis/page.tsx
 "use client";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -14,10 +15,12 @@ import {
 } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import { Doughnut, Bar } from "react-chartjs-2";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import { useRouter, useParams } from "next/navigation";
 import { useClientStore } from "@/stores/clients-store";
+import { useCustodianStore } from "@/stores/custodian-store";
+import { useClientFiltersStore } from "@/stores/client-filters-store";
 import { fmtCurrency, fmtCurrency2, pct } from "@/lib/format";
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CircleHelp } from "lucide-react";
@@ -66,6 +69,10 @@ export default function AnalysisPage() {
   const { clientId } = useParams<{ clientId: string }>();
   const { currClient } = useClientStore();
 
+  // Global header filters
+  const { selected: selectedCustodian } = useCustodianStore();
+  const { fromDate, toDate, account } = useClientFiltersStore();
+
   /* ---------- Product Allocation (REAL from /overview) ---------- */
   const [paRows, setPaRows] = useState<Row[]>([]);
 
@@ -77,12 +84,41 @@ export default function AnalysisPage() {
   const [geoRows, setGeoRows] = useState<Row[]>([]);
   const [indRows, setIndRows] = useState<Row[]>([]);
 
+  // dedupe & cancel guards
+  const lastKeyRef = useRef<string>("");
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (!currClient) return;
+
+    // Avoid transient fetch while the header is snapping the "To" date after switching custodian/account
+    const waitingForTo =
+      ((selectedCustodian && selectedCustodian !== "ALL") || (account && account !== "ALL")) &&
+      !toDate;
+    if (waitingForTo) return;
+
+    // build params from header filters
+    const params: Record<string, any> = { client_id: currClient };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+    if (fromDate) params.from = fromDate;
+    if (toDate)   params.to   = toDate;
+
+    // dedupe identical requests
+    const key = JSON.stringify(params);
+    if (key === lastKeyRef.current) return;
+    lastKeyRef.current = key;
+
+    // cancel any in-flight
+    if (abortRef.current) abortRef.current.abort();
+    const ctr = new AbortController();
+    abortRef.current = ctr;
+
     (async () => {
       try {
         const { data } = await axios.get("/api/clients/assets/overview", {
-          params: { client_id: currClient },
+          params,
+          signal: ctr.signal as any,
         });
 
         // ===== Product Allocation from pie_chart_data =====
@@ -93,7 +129,7 @@ export default function AnalysisPage() {
         if (ac && Array.isArray(ac.labels) && Array.isArray(ac.data)) {
           const rows = ac.labels
             .map((label: string, i: number): Row => ({ label, value: Number(ac.data[i] ?? 0) }))
-            .filter((r: Row) => r.value > 0); // drop "Loans"/negatives
+            .filter((r: Row) => r.value > 0); // drop zero/negatives (loans are negative)
           setPaRows(rows);
         } else {
           setPaRows([]);
@@ -149,7 +185,8 @@ export default function AnalysisPage() {
 
         setGeoRows(geo);
         setIndRows(ind);
-      } catch {
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.message === "canceled") return;
         setPaRows([]);
         setTop10([]);
         setTotalPos(0);
@@ -157,7 +194,11 @@ export default function AnalysisPage() {
         setIndRows([]);
       }
     })();
-  }, [currClient]);
+
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, [currClient, selectedCustodian, fromDate, toDate, account]);
 
   const paSorted = useMemo(() => paRows.slice().sort((a, b) => b.value - a.value), [paRows]);
   const totalProduct = useMemo(() => paRows.reduce((a, r) => a + r.value, 0), [paRows]);
@@ -222,8 +263,9 @@ export default function AnalysisPage() {
     if (!currClient) return;
     (async () => {
       try {
+        // Use current header filters here as well if you want Cash to reflect them, e.g. scope: "cash".
         const { data } = await axios.get("/api/clients/assets/cash", {
-          params: { client_id: currClient },
+          params: { client_id: currClient, scope: "cash" },
         });
         const by = data?.cash?.by_currency;
         setCcyLabels(Array.isArray(by?.labels) ? by.labels : []);
@@ -403,7 +445,6 @@ export default function AnalysisPage() {
                 <TableRow>
                   <TableHead className="w-2/5">Currency</TableHead>
                   <TableHead>Market Value</TableHead>
-                  {/* <TableHead className="text-right">Weight</TableHead> */}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -413,16 +454,12 @@ export default function AnalysisPage() {
                       <TableRow key={`${r.label}-${i}`} className="hover:bg-muted/40 border-b last:border-0">
                         <TableCell className="whitespace-nowrap">{r.label}</TableCell>
                         <TableCell className="whitespace-nowrap">{fmtCurrency2(r.value)}</TableCell>
-                        {/* <TableCell className="whitespace-nowrap text-right">
-                          {pct(r.value, ccyTotal).toFixed(2)}%
-                        </TableCell> */}
                       </TableRow>
                     ))}
                     {/* Total row */}
                     <TableRow className="font-semibold">
                       <TableCell>Total</TableCell>
                       <TableCell className="whitespace-nowrap">{fmtCurrency2(ccyTotal)}</TableCell>
-                      {/* <TableCell className="whitespace-nowrap text-right">100.00%</TableCell> */}
                     </TableRow>
                   </>
                 ) : (
@@ -462,7 +499,6 @@ export default function AnalysisPage() {
                 <TableRow>
                   <TableHead className="w-2/5">Country</TableHead>
                   <TableHead>Market Value</TableHead>
-                  {/* <TableHead className="text-right">Weight</TableHead> */}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -472,9 +508,6 @@ export default function AnalysisPage() {
                       <TableRow key={`${r.label}-${i}`} className="hover:bg-muted/40 border-b last:border-0">
                         <TableCell className="whitespace-nowrap">{r.label}</TableCell>
                         <TableCell className="whitespace-nowrap">{fmtCurrency2(r.value)}</TableCell>
-                        {/* <TableCell className="whitespace-nowrap text-right">
-                          {pct(r.value, geoRows.reduce((a, x) => a + x.value, 0)).toFixed(2)}%
-                        </TableCell> */}
                       </TableRow>
                     ))}
                     {/* Total row */}
@@ -483,7 +516,6 @@ export default function AnalysisPage() {
                       <TableCell className="whitespace-nowrap">
                         {fmtCurrency2(geoRows.reduce((a, x) => a + x.value, 0))}
                       </TableCell>
-                      {/* <TableCell className="whitespace-nowrap text-right">100.00%</TableCell> */}
                     </TableRow>
                   </>
                 ) : (
@@ -523,7 +555,6 @@ export default function AnalysisPage() {
                 <TableRow>
                   <TableHead className="w-2/5">Industry</TableHead>
                   <TableHead>Market Value</TableHead>
-                  {/* <TableHead className="text-right">Weight</TableHead> */}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -533,9 +564,6 @@ export default function AnalysisPage() {
                       <TableRow key={`${r.label}-${i}`} className="hover:bg-muted/40 border-b last:border-0">
                         <TableCell className="whitespace-nowrap">{r.label}</TableCell>
                         <TableCell className="whitespace-nowrap">{fmtCurrency2(r.value)}</TableCell>
-                        {/* <TableCell className="whitespace-nowrap text-right">
-                          {pct(r.value, indRows.reduce((a, x) => a + x.value, 0)).toFixed(2)}%
-                        </TableCell> */}
                       </TableRow>
                     ))}
                     {/* Total row */}
@@ -544,7 +572,6 @@ export default function AnalysisPage() {
                       <TableCell className="whitespace-nowrap">
                         {fmtCurrency2(indRows.reduce((a, x) => a + x.value, 0))}
                       </TableCell>
-                      {/* <TableCell className="whitespace-nowrap text-right">100.00%</TableCell> */}
                     </TableRow>
                   </>
                 ) : (
