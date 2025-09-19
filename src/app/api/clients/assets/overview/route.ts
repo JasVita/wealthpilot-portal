@@ -1,26 +1,42 @@
-// src/app/api/clients/assets/overview/route.ts
-// Usage samples:
-//
-// Latest snapshot (ALL → latest per custodian)
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29'
-//
-// Custodian-only latest (no dates)
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=Standard%20Chartered'
-//
-// Account-only latest (no dates)
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&account=550051-1'
-//
-// “To only” (up to date) across all custodians
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&to=2025-04-30'
-//
-// Range (from..to) across all custodians
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&from=2025-04-01&to=2025-05-31'
-//
-// Custodian + “to only”
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&custodian=Bank%20of%20Singapore&to=2025-05-31'
-//
-// Range + Account
-//   curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=29&account=550051-1&from=2025-04-01&to=2025-04-30'
+//  ------------------------ Latest snapshots
+// A) ALL custodians → latest per custodian
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51'
+
+// B) Custodian-only latest (UBS)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS'
+
+// C) Account-only latest (530-178170-01)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&account=530-178170-01'
+
+//  ------------------------ To-only snapshots (exact date)
+// D) Snapshot at 2025-06-30 (all custodians)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&to=2025-06-30'
+
+// E) Snapshot at 2025-07-31 for UBS
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS&to=2025-07-31'
+
+// F) Snapshot at 2025-08-31 for UBS + account 530-178170-01
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS&account=530-178170-01&to=2025-08-31'
+
+//  ------------------------ From-only ranges (≥ from)
+// G) Range from 2025-06-01 (all custodians)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&from=2025-06-01'
+
+// H) Range from 2025-06-01 for UBS
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS&from=2025-06-01'
+
+// I) Range from 2025-06-01 for UBS + account 530-178170-01
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS&account=530-178170-01&from=2025-06-01'
+
+//  ------------------------ From..To ranges (inclusive)
+// J) Range Jun→Aug 2025 (all custodians)
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&from=2025-06-01&to=2025-08-31'
+
+// K) Range Jun→Aug 2025 for UBS
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS&from=2025-06-01&to=2025-08-31'
+
+// L) Range Jun→Aug 2025 for UBS + account 530-178170-01
+// curl -s 'http://localhost:3001/api/clients/assets/overview?client_id=51&custodian=UBS&account=530-178170-01&from=2025-06-01&to=2025-08-31'
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
@@ -47,7 +63,7 @@ async function fetchRangeTableData(
   const pool = await poolPromise;
   const q = await pool.query<{ data: any }>(
     // use your _test function while validating
-    `select public.get_overview_range_aggregated_test($1,$2,$3,$4,$5)::jsonb as data`,
+    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
     [clientId, fromISO, toISO, custodian, account]
   );
   return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };

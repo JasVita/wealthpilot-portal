@@ -578,7 +578,8 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
         {status === "ready" && (
           <>
             {/* KPIs with exact 2 decimals */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4"> */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <Kpi title="Total Assets" value={kpiValues.totalAssets} caption="Gross long positions" />
               <Kpi
                 title="Total Liabilities"
@@ -587,7 +588,7 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
                 valueClassName="text-red-600"
               />
               <Kpi title="Net Assets" value={kpiValues.netAssets} caption="Assets − Liabilities" />
-              <Kpi title="AUM (from banks)" value={kpiValues.aumFromBanks} caption="Sum of bank exposure" />
+              {/* <Kpi title="AUM (from banks)" value={kpiValues.aumFromBanks} caption="Sum of bank exposure" /> */}
             </div>
 
             {/* Trend + quick breakdown chips */}

@@ -57,7 +57,7 @@ async function fetchRangeTableData(
 ) {
   const pool = getPool();
   const q = await pool.query<{ data: any }>(
-    `select public.get_overview_range_aggregated_test($1,$2,$3,$4,$5)::jsonb as data`,
+    `select public.get_overview_range_aggregated($1,$2,$3,$4,$5)::jsonb as data`,
     [clientId, fromISO, toISO, custodian, account]
   );
   return q.rows?.[0]?.data ?? { tableData: [], periods: [], custodians: [] };
@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json({
         status: "ok",
-         month_date: labelDate,
+        month_date: labelDate,
         totals: { grand_total: grand },
         cash: {
           by_currency: {
