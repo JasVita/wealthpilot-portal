@@ -12,6 +12,7 @@ import { useClientStore } from "@/stores/clients-store";
 import { useCustodianStore } from "@/stores/custodian-store";
 import { useClientFiltersStore } from "@/stores/client-filters-store";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,6 +153,9 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
 
   const [cards, setCards] = useState<Cards | null>(null);
   const [trendApi, setTrendApi] = useState<{ label: string; net_assets: number }[] | null>(null);
+  const [trendFull, setTrendFull] = useState<{ label: string; net_assets: number }[] | null>(null);
+  const [trendFrom, setTrendFrom] = useState<string | null>(null);
+  const [trendTo, setTrendTo] = useState<string | null>(null);
   const [breakdownApi, setBreakdownApi] = useState<Record<string, number> | null>(null);
 
   // ---- dedupe / cancellation guards
@@ -216,6 +220,38 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     };
   }, [currClient, selectedCustodian, fromDate, toDate, account]);
 
+  // Fetch FULL trend series for the current scope (client/custodian/account), ignoring header Date.
+  useEffect(() => {
+    if (!currClient) return;
+    const params: any = { client_id: currClient };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+  
+    let canceled = false;
+    axios.get("/api/clients/assets/overview", { params })
+      .then(({ data }) => {
+        if (canceled) return;
+        const series: { label: string; net_assets: number }[] =
+          Array.isArray(data?.computed?.trend) ? data.computed.trend : [];
+        setTrendFull(series.length ? series : null);
+        // initialize From/To to bounds of the available series
+        if (series?.length) {
+          const first = series[0].label;
+          const last = series[series.length - 1].label;
+          setTrendFrom((prev) => (prev && series.some(s => s.label === prev) ? prev : first));
+          setTrendTo((prev) => (prev && series.some(s => s.label === prev) ? prev : last));
+        } else {
+          setTrendFrom(null);
+          setTrendTo(null);
+        }
+      })
+      .catch(() => {
+        if (!canceled) { setTrendFull(null); setTrendFrom(null); setTrendTo(null); }
+      });
+    return () => { canceled = true; };
+  // NOTE: intentionally NOT dependent on toDate/fromDate
+  }, [currClient, selectedCustodian, account, fromDate, toDate]);
+
   const current = overviews[0];
 
   const aggregatedTables = useMemo(() => {
@@ -239,6 +275,17 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
       datasets: [{ data: c.data, backgroundColor: c.colors, borderWidth: 0 }],
     }));
   }, [current]);
+
+  const trendRange = useMemo(() => {
+    const s = trendFull ?? [];
+    if (!s.length || !trendFrom || !trendTo) return s;
+    const i1 = s.findIndex(t => t.label === trendFrom);
+    const i2 = s.findIndex(t => t.label === trendTo);
+    if (i1 < 0 || i2 < 0) return s;
+    const [a, b] = i1 <= i2 ? [i1, i2] : [i2, i1];
+    return s.slice(a, b + 1);
+  }, [trendFull, trendFrom, trendTo]);
+
 
   // ---- Hidden charts for PDF ----
   const chartRefs = useRef<Record<number, any>>({});
@@ -354,21 +401,13 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
 
   // Trend (server preferred)
   const trend = useMemo(() => {
-    if (trendApi && trendApi.length) {
-      const labels = trendApi.map((t) => t.label);
-      const data = trendApi.map((t) => t.net_assets);
-      return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
-    }
-    if (!overviews.length) return null;
-    const sorted = [...overviews].sort((a, b) => +parseDate(a.month_date) - +parseDate(b.month_date));
-    const labels = sorted.map((o) =>
-      new Date(o.month_date).toLocaleDateString("en-US", { year: "2-digit", month: "short" })
-    );
-    const data = sorted.map(
-      (o) => (o.pie_chart_data?.charts?.[0]?.data ?? []).reduce((a: number, b: number) => a + b, 0) || 0
-    );
-    return { labels, datasets: [{ label: "Net Assets", data, fill: true, tension: 0.35, borderWidth: 2 }] };
-  }, [trendApi, overviews]);
+    const src = (trendRange && trendRange.length ? trendRange : (trendApi ?? [])) as {label:string; net_assets:number}[];
+    if (!src.length) return null;
+    return {
+      labels: src.map(s => s.label),
+      datasets: [{ label: "Net Assets", data: src.map(s => s.net_assets), fill: true, tension: 0.35, borderWidth: 2 }],
+    };
+  }, [trendRange, trendApi, overviews]);
 
   const lineOptions = useMemo(() => {
     const values = (trend?.datasets?.[0]?.data as number[]) ?? [];
@@ -379,15 +418,35 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
     return {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { left: 8, right: 8, top: 8, bottom: 8 } },
+      // layout: { padding: { left: 8, right: 8, top: 8, bottom: 8 } },
+      layout: { padding: { top: 12, right: 16, bottom: 8, left: 8 } },
       plugins: {
         legend: { display: true },
         datalabels: {
+          clamp: true,
           display: true,
-          formatter: (v: number) => fmtCurrency2(Number(v)),
-          anchor: "center",
-          align: "right",
-          offset: 10,
+          // formatter: (v: number) => fmtCurrency2(Number(v)),
+          // anchor: "center",
+          // align: "right",
+          // offset: 10,
+          // Single point: show to the RIGHT of the dot.
+          // ≥ 2 points: last → LEFT of the dot; others → RIGHT.
+          anchor: (ctx: any) => {
+            const n = Array.isArray(ctx.dataset?.data) ? ctx.dataset.data.length : 0;
+            if (n <= 1) return "center";                   // single point → position relative to the dot
+            return ctx.dataIndex === n - 1 ? "end" : "center";
+          },
+          align: (ctx: any) => {
+            const n = Array.isArray(ctx.dataset?.data) ? ctx.dataset.data.length : 0;
+            if (n <= 1) return "right";                    // single point → show on the RIGHT
+            return ctx.dataIndex === n - 1 ? "left" : "right";
+          },
+          offset: (ctx: any) => {
+            const n = Array.isArray(ctx.dataset?.data) ? ctx.dataset.data.length : 0;
+            return (n <= 1) ? 8 : (ctx.dataIndex === n - 1 ? 12 : 8);
+          },
+          formatter: (v: number) => (v ? fmtCurrency2(v) : ""),
+
           color: "#111827",
           backgroundColor: "rgba(255,255,255,0.92)",
           borderColor: "#bedcb5ff",
@@ -535,8 +594,32 @@ export default function AssetsLayout({ children }: { children: React.ReactNode }
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <Card className="lg:col-span-2">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Portfolio Trend</CardTitle>
-                  <CardDescription>Net assets over reporting periods</CardDescription>
+                  {/* <CardTitle className="text-lg">Portfolio Trend</CardTitle>
+                  <CardDescription>Net assets over reporting periods</CardDescription> */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-lg">Portfolio Trend</CardTitle>
+                      <CardDescription>Net assets over reporting periods</CardDescription>
+                    </div>
+                    {!!(trendFull?.length) && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">From</span>
+                        <Select value={trendFrom ?? undefined} onValueChange={setTrendFrom}>
+                          <SelectTrigger className="h-8 w-[140px]"><SelectValue placeholder="From" /></SelectTrigger>
+                          <SelectContent>
+                            {trendFull!.map(s => (<SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                        <span className="text-xs text-muted-foreground">To</span>
+                        <Select value={trendTo ?? undefined} onValueChange={setTrendTo}>
+                          <SelectTrigger className="h-8 w-[140px]"><SelectValue placeholder="To" /></SelectTrigger>
+                          <SelectContent>
+                            {trendFull!.map(s => (<SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="h-[260px]">
                   {trend ? <Line data={trend} options={lineOptions} /> : <div className="text-sm text-muted-foreground">No history</div>}
