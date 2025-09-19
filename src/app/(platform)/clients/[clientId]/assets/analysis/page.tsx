@@ -261,21 +261,44 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     if (!currClient) return;
+
+    // Build params from the same header filters used across the app
+    const params: Record<string, any> = { client_id: currClient, scope: "cash" };
+    if (selectedCustodian && selectedCustodian !== "ALL") params.custodian = selectedCustodian;
+    if (account && account !== "ALL") params.account = account;
+    if (fromDate) params.from = fromDate;
+    if (toDate)   params.to   = toDate;
+
+    // cancel in-flight safely
+    const ctr = new AbortController();
+    let canceled = false;
+
     (async () => {
       try {
-        // Use current header filters here as well if you want Cash to reflect them, e.g. scope: "cash".
         const { data } = await axios.get("/api/clients/assets/cash", {
-          params: { client_id: currClient, scope: "cash" },
+          params,
+          signal: ctr.signal as any,
         });
+
         const by = data?.cash?.by_currency;
-        setCcyLabels(Array.isArray(by?.labels) ? by.labels : []);
-        setCcyData(Array.isArray(by?.data) ? by.data : []);
-      } catch {
-        setCcyLabels([]);
-        setCcyData([]);
+        if (!canceled) {
+          setCcyLabels(Array.isArray(by?.labels) ? by.labels : []);
+          setCcyData(Array.isArray(by?.data) ? by.data : []);
+        }
+      } catch (e) {
+        if (!canceled) {
+          setCcyLabels([]);
+          setCcyData([]);
+        }
       }
     })();
-  }, [currClient]);
+
+    return () => {
+      canceled = true;
+      try { ctr.abort(); } catch {}
+    };
+    // Make the currency card react to the same filters as Overview
+  }, [currClient, selectedCustodian, account, fromDate, toDate]);
 
   /* ---------- TOP 10 chart (weights vs. total positive assets) ---------- */
   const top10Labels = useMemo(() => top10.map((p) => p.name), [top10]);
